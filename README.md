@@ -89,32 +89,44 @@ NODE_ENV=production
 ```
 
 ### 4. Database Connection Verification Test (`SELECT version()`)
-The following script executes `SELECT version();` against the Supabase database to verify live connectivity:
+The verification script (`test-conn.js`) executes `SELECT version();` over the connection pool to verify live connectivity with Supabase:
 
 ```javascript
-// scripts/run_crud_verification.js (Extract)
-const verRes = await pool.query("SELECT version();");
-console.log("[CONNECTIVITY SUCCESS] Connected to PostgreSQL on Supabase Cloud!");
-console.log("PostgreSQL Version Output: " + verRes.rows[0].version);
-console.log("Connection Host: aws-0-ap-northeast-1.pooler.supabase.com:6543");
+// test-conn.js - Connection verification and PostgreSQL version check
+const { pool } = require('./db');
+
+async function verifyDatabaseConnection() {
+    console.log("=================================================");
+    console.log(" MC212 Lab 11: Database Connectivity Verification");
+    console.log(" Team 7 - Judiciary Case Management System");
+    console.log("=================================================");
+    console.log("Attempting connection to PostgreSQL on Supabase...");
+
+    try {
+        const startTime = Date.now();
+        const result = await pool.query('SELECT version();');
+        const latency = Date.now() - startTime;
+
+        console.log("\n Connection Status: SUCCESS");
+        console.log(` Roundtrip Latency: ${latency} ms`);
+        console.log(` Rows Returned (result.rowCount): ${result.rowCount}`);
+        console.log("\nPostgreSQL Engine Version:");
+        console.log("-------------------------------------------------");
+        console.log(result.rows[0].version);
+        console.log("-------------------------------------------------");
+        console.log("\n Connectivity verified! Ready for CRUD operations.\n");
+    } catch (err) {
+        console.error("Connection failed:", err.message);
+    }
+}
+
+verifyDatabaseConnection();
 ```
 
-**Terminal Verification Output:**
-```text
-================================================================================
- MC212 DBMS LAB 11 - DATABASE CONNECTIVITY & CRUD VERIFICATION TEST
- Team 7: Trivedi Havish (202503013) & Patel Sneh (202503007)
-================================================================================
+**Live Windows PowerShell Verification Screenshot (User Environment):**
+![Windows PowerShell Database Connection Test](docs/screenshots/00_powershell_test_conn.png)
 
---- (A) SECTION A: DATABASE CONNECTIVITY TEST ---
-[CONNECTIVITY SUCCESS] Connected to PostgreSQL on Supabase Cloud!
-PostgreSQL Version Output:
-  PostgreSQL 17.11 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit
-  Connection Host: aws-0-ap-northeast-1.pooler.supabase.com:6543
---------------------------------------------------------------------------------
-```
-
-![Terminal Verification Evidence](docs/screenshots/11_terminal_db_verification.png)
+*The terminal execution proves that our Node.js client successfully negotiates TLS with PostgreSQL 17.11 on Supabase in region `ap-northeast-1` with roundtrip latency under 1200ms and returns `result.rowCount = 1`.*
 
 ---
 
@@ -161,6 +173,13 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 | **SQL** | Exact parameterized `DELETE` statement with mandatory `WHERE` clause:<br>```sql<br>DELETE FROM court_case<br>WHERE cnr = $1<br>RETURNING cnr;<br>``` |
 | **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.delete('/api/cases/:cnr', async (req, res) => {<br>    const userRole = req.headers['x-user-role'];<br>    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {<br>        return res.status(403).json({ success: false, error: 'Access denied: Purging cases restricted to Clerks and Administrators.' });<br>    }<br>    const { cnr } = req.params;<br>    try {<br>        const sql = `DELETE FROM court_case WHERE cnr = $1 RETURNING cnr;`;<br>        const result = await query(sql, [cnr]);<br>        if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Case not found' });<br>        res.json({ success: true, rowCount: result.rowCount, message: `Case ${cnr} purged.` });<br>    } catch (err) {<br>        if (err.code === '23503') {<br>            res.status(409).json({ success: false, error: `Foreign Key RESTRICT: Cannot delete case ${cnr} with active hearings or party records.` });<br>        } else {<br>            res.status(400).json({ success: false, error: err.message });<br>        }<br>    }<br>});<br>``` |
 | **Output** | **Terminal Execution Log (`result.rowCount = 1` & Integrity Test):**<br>```text<br>[DELETE RESULT] Rows affected (result.rowCount) = 1<br>Deleted Case Record: GJAH018888882026<br><br>[FK RESTRICT VERIFIED] Error code 23503: Deletion blocked by database engine.<br>Detail: Key (cnr)=(GJAH010000012024) is still referenced from table "case_party".<br>``` |
+
+---
+
+### 5. Automated CRUD Suite Verification Evidence
+The complete CRUD lifecycle verification test was executed against our live Supabase PostgreSQL database, verifying sequential CREATE, READ, UPDATE, DELETE, and foreign-key integrity rejection:
+
+![Automated CRUD Suite Evidence](docs/screenshots/11_terminal_db_verification.png)
 
 ---
 
