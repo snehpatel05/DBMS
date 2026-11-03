@@ -1441,12 +1441,34 @@ window.addEventListener('load', () => {
     if (view === 'newCase') {
         setTimeout(() => openModal('createCaseModal'), 300);
     } else if (view === 'drawer') {
-        setTimeout(() => viewDossier('GJAH010000012024'), 400);
+        setTimeout(() => viewDossier('GJAH010000012024'), 500);
+    } else if (view === 'edit') {
+        setTimeout(() => openUpdateModal('GJAH010000012024'), 400);
     } else if (view === 'delete') {
         setTimeout(() => openDeleteModal('GJAH010000012024', 'CC/1/2024'), 300);
     } else if (view === 'rbac') {
         setTimeout(() => openModal('switchUserModal'), 300);
+    } else if (view === 'judge') {
+        setTimeout(() => loginPresetUser(201, 'Judge'), 300);
+    } else if (view === 'bench') {
+        setTimeout(async () => {
+            await loginPresetUser(201, 'Judge');
+            setTimeout(() => openJudgeBenchModal('GJAH010000012024', 1, 'Arguments Heard', 'Heard learned counsel for petitioner. Ad interim stay granted on respondent notice.'), 400);
+        }, 300);
+    } else if (view === 'advocate') {
+        setTimeout(async () => {
+            await loginPresetUser(1, 'Advocate');
+            setTimeout(() => switchTab('tab-documents'), 400);
+        }, 300);
+    } else if (view === 'audit') {
+        setTimeout(async () => {
+            await loginPresetUser(401, 'Court Administrator');
+            setTimeout(() => switchTab('tab-audit'), 400);
+        }, 300);
     } else if (view === 'admin') {
-        setTimeout(() => switchTab('admin'), 300);
+        setTimeout(async () => {
+            await loginPresetUser(401, 'Court Administrator');
+            setTimeout(() => switchTab('tab-admin'), 400);
+        }, 300);
     }
 });
