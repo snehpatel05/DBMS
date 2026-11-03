@@ -269,4 +269,3 @@ To run this application locally on your machine:
 
 **MC212 Database Management Systems — Team 7**  
 *Trivedi Havish Ashishkumar (202503013) & Patel Sneh Champakkumar (202503007)*  
-*Department of Computer Science & Information Technology, DA-IICT*
