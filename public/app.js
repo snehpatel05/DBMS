@@ -1102,3 +1102,20 @@ function debounce(fn, delay) {
         timer = setTimeout(() => fn(...args), delay);
     };
 }
+
+// Automatic view trigger for headless documentation screenshots
+window.addEventListener('load', () => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view === 'newCase') {
+        setTimeout(() => openModal('createCaseModal'), 300);
+    } else if (view === 'drawer') {
+        setTimeout(() => viewDossier('GJAH010000012024'), 400);
+    } else if (view === 'delete') {
+        setTimeout(() => openDeleteModal('GJAH010000012024', 'CC/1/2024'), 300);
+    } else if (view === 'rbac') {
+        setTimeout(() => openModal('switchUserModal'), 300);
+    } else if (view === 'admin') {
+        setTimeout(() => switchTab('admin'), 300);
+    }
+});
