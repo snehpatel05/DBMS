@@ -11,6 +11,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// URL prefix normalization for hosting environments (like Vercel serverless)
+app.use((req, res, next) => {
+    if (!req.url.startsWith('/api') && (
+        req.url.startsWith('/cases') ||
+        req.url.startsWith('/stats') ||
+        req.url.startsWith('/hearings') ||
+        req.url.startsWith('/orders') ||
+        req.url.startsWith('/witnesses') ||
+        req.url.startsWith('/users') ||
+        req.url.startsWith('/auth')
+    )) {
+        req.url = '/api' + req.url;
+    }
+    next();
+});
+
 // ==============================================================
 // 1. AUTHENTICATION & ROLE SWITCHING (RBAC)
 // ==============================================================
@@ -533,7 +549,7 @@ app.post('/api/witnesses', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-if (require.main === module || !process.env.VERCEL) {
+if (require.main === module) {
     app.listen(PORT, () => {
         console.log(`=================================================`);
         console.log(` District Judiciary Enterprise Management Active`);
