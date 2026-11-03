@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>District Court Case Management — Sessions Division</title>
+    <!-- Google Font: Source Sans 3 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- TOP HEADER -->
+    <header class="app-header">
+        <div class="header-container">
+            <div class="header-left">
+                <div class="logo-sq">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>
+                    </svg>
+                </div>
+                <div class="header-titles">
+                    <h1 class="app-title">District Court Case Management</h1>
+                    <span class="app-subtitle">Sessions Division</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="user-role-badge">
+                    <span class="user-dot"></span>
+                    <span class="user-name">Clerk Office (Courtroom 2)</span>
+                </div>
+                <button class="btn btn-primary btn-header" onclick="openModal('createCaseModal')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    File New Case
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CENTRED CONTAINER -->
+    <div class="main-layout">
+
+        <!-- SUMMARY CARDS -->
+        <section class="summary-cards">
+            <div class="card card-total" onclick="filterByCard('ALL', 'ALL')" title="Click to view all cases">
+                <span class="card-label">Total Cases</span>
+                <span class="card-num" id="kpiTotalCases">--</span>
+                <span class="card-caption">All registered filings</span>
+            </div>
+            <div class="card card-pending" onclick="filterByCard('Pending', 'ALL')" title="Click to filter Pending cases">
+                <span class="card-label">Pending</span>
+                <span class="card-num" id="kpiPendingCases">--</span>
+                <span class="card-caption">Awaiting court trial</span>
+            </div>
+            <div class="card card-urgent" onclick="filterByCard('ALL', 'Urgent')" title="Click to filter Urgent cases">
+                <span class="card-label">Urgent</span>
+                <span class="card-num" id="kpiUrgentCases">--</span>
+                <span class="card-caption">Priority track matters</span>
+            </div>
+            <div class="card card-disposed" onclick="filterByCard('Disposed', 'ALL')" title="Click to filter Disposed cases">
+                <span class="card-label">Disposed</span>
+                <span class="card-num" id="kpiDisposedCases">--</span>
+                <span class="card-caption">Final judgments given</span>
+            </div>
+            <div class="card card-hearings" onclick="switchTab('tab-hearings')" title="Click to view Hearing Calendar">
+                <span class="card-label">Hearings Listed</span>
+                <span class="card-num" id="kpiTotalHearings">--</span>
+                <span class="card-caption">Calendar sessions</span>
+            </div>
+            <div class="card card-orders" onclick="switchTab('tab-orders')" title="Click to view Orders">
+                <span class="card-label">Published Orders</span>
+                <span class="card-num" id="kpiPublishedOrders">--</span>
+                <span class="card-caption">Signed court decrees</span>
+            </div>
+        </section>
+
+        <!-- TABS BAR -->
+        <nav class="nav-tabs-bar">
+            <button class="nav-tab active" data-tab="tab-cases">
+                Cases
+                <span class="tab-badge" id="badgeCases">--</span>
+            </button>
+            <button class="nav-tab" data-tab="tab-hearings">
+                Hearings
+                <span class="tab-badge" id="badgeHearings">--</span>
+            </button>
+            <button class="nav-tab" data-tab="tab-orders">
+                Orders
+                <span class="tab-badge" id="badgeOrders">--</span>
+            </button>
+            <button class="nav-tab" data-tab="tab-witnesses">
+                Witnesses
+                <span class="tab-badge" id="badgeWitnesses">--</span>
+            </button>
+        </nav>
+
+        <!-- ==============================================================
+             TAB 1: CASES
+             ============================================================== -->
+        <section class="tab-pane active" id="tab-cases">
+            <div class="content-surface">
+                <!-- TOOLBAR -->
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="caseSearchInput" placeholder="Search by Case No., Filing No., or CNR..." />
+                        </div>
+                        <select id="caseFilterUrgency" class="form-select">
+                            <option value="ALL">All Urgencies</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Urgent">Urgent</option>
+                            <option value="Statutory">Statutory</option>
+                        </select>
+                        <select id="caseFilterStatus" class="form-select">
+                            <option value="ALL">All Statuses</option>
+                            <option value="Filed">Filed</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Disposed">Disposed</option>
+                        </select>
+                        <button class="btn-link" id="btnClearCaseFilters" onclick="clearCaseFilters()">Clear filters</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="showing-count" id="caseShowingText">Showing 0 of 0 cases</span>
+                        <button class="btn btn-secondary" onclick="loadCases()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                            Refresh
+                        </button>
+                        <button class="btn btn-primary" onclick="openModal('createCaseModal')">
+                            + File New Case
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TABLE -->
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Case No. (CNR)</th>
+                                <th>Filing No.</th>
+                                <th>Case Number</th>
+                                <th>FIR Reference</th>
+                                <th>Urgency</th>
+                                <th>Status</th>
+                                <th>Registered By</th>
+                                <th class="text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="caseTableBody">
+                            <tr><td colspan="8" class="table-loading">Loading court cases...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- PAGINATION BAR -->
+                <div class="table-pagination">
+                    <div class="pagination-left">
+                        <label for="rowsPerPageSelect">Rows per page:</label>
+                        <select id="rowsPerPageSelect" class="form-select form-select-sm" onchange="changePageSize(this.value)">
+                            <option value="10">10</option>
+                            <option value="25" selected>25</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div class="pagination-center" id="pageRangeLabel">
+                        Page 1 of 1
+                    </div>
+                    <div class="pagination-right">
+                        <button class="btn btn-secondary btn-sm" id="btnPrevPage" onclick="prevPage()">Previous</button>
+                        <div class="page-numbers" id="pageNumbersContainer"></div>
+                        <button class="btn btn-secondary btn-sm" id="btnNextPage" onclick="nextPage()">Next</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 2: HEARINGS
+             ============================================================== -->
+        <section class="tab-pane" id="tab-hearings">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="hearingSearchInput" placeholder="Search hearings by CNR..." />
+                        </div>
+                        <select id="hearingFilterOutcome" class="form-select">
+                            <option value="ALL">All Outcomes</option>
+                            <option value="Arguments Heard">Arguments Heard</option>
+                            <option value="Evidence Recorded">Evidence Recorded</option>
+                            <option value="Order Reserved">Order Reserved</option>
+                            <option value="Adjourned">Adjourned</option>
+                            <option value="Disposed">Disposed</option>
+                        </select>
+                        <button class="btn-link" onclick="clearHearingFilters()">Clear filters</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="showing-count" id="hearingShowingText">Loading hearings...</span>
+                        <button class="btn btn-secondary" onclick="loadHearings()">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Case No. (CNR)</th>
+                                <th>Hearing No.</th>
+                                <th>Scheduled Date</th>
+                                <th>Outcome</th>
+                                <th>Bench Minutes</th>
+                                <th>Presiding Judge</th>
+                                <th>Daily Cause List</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hearingTableBody">
+                            <tr><td colspan="7" class="table-loading">Loading hearing schedule...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 3: ORDERS
+             ============================================================== -->
+        <section class="tab-pane" id="tab-orders">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="orderSearchInput" placeholder="Search orders by CNR..." />
+                        </div>
+                        <select id="orderFilterType" class="form-select">
+                            <option value="ALL">All Order Types</option>
+                            <option value="Final Judgment">Final Judgment</option>
+                            <option value="Interim Order">Interim Order</option>
+                            <option value="Procedural Order">Procedural Order</option>
+                        </select>
+                        <select id="orderFilterPublish" class="form-select">
+                            <option value="ALL">All Publication States</option>
+                            <option value="Published">Published</option>
+                            <option value="Draft">Draft Only</option>
+                        </select>
+                        <button class="btn-link" onclick="clearOrderFilters()">Clear filters</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="showing-count" id="orderShowingText">Loading orders...</span>
+                        <button class="btn btn-secondary" onclick="loadOrders()">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Case No. (CNR)</th>
+                                <th>Order No.</th>
+                                <th>Order Type</th>
+                                <th>Draft Date</th>
+                                <th>Published Date</th>
+                                <th>Status</th>
+                                <th>Judge Ref</th>
+                                <th class="text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orderTableBody">
+                            <tr><td colspan="8" class="table-loading">Loading court orders...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 4: WITNESSES
+             ============================================================== -->
+        <section class="tab-pane" id="tab-witnesses">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="witnessSearchInput" placeholder="Search witness by name or phone..." />
+                        </div>
+                        <button class="btn-link" onclick="clearWitnessFilters()">Clear filters</button>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="showing-count" id="witnessShowingText">Loading witnesses...</span>
+                        <button class="btn btn-secondary" onclick="loadWitnesses()">Refresh</button>
+                        <button class="btn btn-primary" onclick="openModal('createWitnessModal')">Enroll Witness</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Witness ID</th>
+                                <th>Full Name</th>
+                                <th>Contact Number</th>
+                                <th>Summons Served</th>
+                            </tr>
+                        </thead>
+                        <tbody id="witnessTableBody">
+                            <tr><td colspan="4" class="table-loading">Loading witness roster...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="app-footer">
+            <span>MC212 DBMS - Team 7 - Powered by PostgreSQL on Supabase</span>
+        </footer>
+
+    </div>
+
+    <!-- ==============================================================
+         RIGHT-SIDE CASE DETAIL DRAWER (~560px wide)
+         ============================================================== -->
+    <div class="drawer-overlay" id="dossierModal">
+        <aside class="case-drawer">
+            <div class="drawer-header">
+                <div>
+                    <div class="drawer-pretitle">Case Details</div>
+                    <h2 class="drawer-case-cnr" id="dossierTitle">CNR File</h2>
+                    <div class="drawer-badges" id="dossierBadges"></div>
+                </div>
+                <button class="btn-drawer-close" onclick="closeModal('dossierModal')">&times;</button>
+            </div>
+            
+            <div class="drawer-content" id="dossierContent">
+                <div class="table-loading">Loading case details...</div>
+            </div>
+
+            <div class="drawer-footer">
+                <button class="btn btn-secondary" id="btnDrawerEdit">Edit Case</button>
+                <button class="btn btn-secondary" onclick="closeModal('dossierModal')">Close</button>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ==============================================================
+         CENTRED MODAL: FILE NEW CASE (CREATE)
+         ============================================================== -->
+    <div class="modal-overlay" id="createCaseModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">File New Case</h2>
+                    <span class="modal-desc">Register a new case in the district court records</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('createCaseModal')">&times;</button>
+            </div>
+            <form id="createCaseForm">
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="cnr_in">CNR (16 Characters) <span class="required">*</span></label>
+                            <input type="text" id="cnr_in" class="form-input font-mono" maxlength="16" value="GJAH010009992026" required pattern="^[A-Z]{4}[0-9]{12}$" />
+                            <span class="form-help">4 uppercase letters followed by 12 digits</span>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sfn_in">Filing Number (SFN) <span class="required">*</span></label>
+                            <input type="text" id="sfn_in" class="form-input" value="SFN-2026-000999" required />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="caseno_in">Case Number <span class="required">*</span></label>
+                            <input type="text" id="caseno_in" class="form-input" value="CC/999/2026" required />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="fir_in">FIR Reference</label>
+                            <input type="text" id="fir_in" class="form-input" value="FIR/0099/2026" placeholder="Leave blank if civil matter" />
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="urgency_in">Statutory Urgency <span class="required">*</span></label>
+                            <select id="urgency_in" class="form-select w-100">
+                                <option value="Normal">Normal</option>
+                                <option value="Urgent">Urgent</option>
+                                <option value="Statutory">Statutory</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="status_in">Case Status <span class="required">*</span></label>
+                            <select id="status_in" class="form-select w-100">
+                                <option value="Filed" selected>Filed</option>
+                                <option value="Pending">Pending</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="clerk_in">Registering Clerk ID <span class="required">*</span></label>
+                        <input type="number" id="clerk_in" class="form-input" value="301" min="301" max="400" required />
+                        <span class="form-help">Authorized clerk IDs: 301 to 400</span>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('createCaseModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitCreate">Save Case</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         CENTRED MODAL: EDIT CASE (UPDATE)
+         ============================================================== -->
+    <div class="modal-overlay" id="updateCaseModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Edit Case</h2>
+                    <span class="modal-desc">Update urgency and status for this case</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('updateCaseModal')">&times;</button>
+            </div>
+            <form id="updateCaseForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Case No. (CNR)</label>
+                        <input type="text" id="upd_cnr" class="form-input font-mono input-readonly" readonly />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="upd_fir">FIR Reference</label>
+                        <input type="text" id="upd_fir" class="form-input" />
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="upd_urgency">Statutory Urgency</label>
+                            <select id="upd_urgency" class="form-select w-100">
+                                <option value="Normal">Normal</option>
+                                <option value="Urgent">Urgent</option>
+                                <option value="Statutory">Statutory</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="upd_status">Case Status</label>
+                            <select id="upd_status" class="form-select w-100">
+                                <option value="Pending">Pending</option>
+                                <option value="Filed">Filed</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('updateCaseModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitUpdate">Save Case</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         CENTRED MODAL: DELETE CONFIRMATION
+         ============================================================== -->
+    <div class="modal-overlay" id="deleteCaseModal">
+        <div class="modal-box modal-sm">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title text-danger">Delete Case</h2>
+                    <span class="modal-desc">This action permanently removes the record</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('deleteCaseModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete case <strong class="font-mono" id="del_target_cnr"></strong>?</p>
+                <div class="alert-box-info mt-3">
+                    <strong>Integrity Notice:</strong> If this case has associated hearings, documents, or orders, the database will safely prevent deletion under relational integrity rules. Newly filed test cases can be deleted directly.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('deleteCaseModal')">Cancel</button>
+                <button type="button" class="btn btn-danger-solid" id="btnConfirmDelete">Delete Case</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         CENTRED MODAL: ENROLL WITNESS
+         ============================================================== -->
+    <div class="modal-overlay" id="createWitnessModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Enroll New Witness</h2>
+                    <span class="modal-desc">Add a witness to the court witness roster</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('createWitnessModal')">&times;</button>
+            </div>
+            <form id="createWitnessForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="wit_id">Witness ID <span class="required">*</span></label>
+                        <input type="number" id="wit_id" class="form-input" value="901" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="wit_name">Full Name <span class="required">*</span></label>
+                        <input type="text" id="wit_name" class="form-input" placeholder="e.g. Ramesh Patel" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="wit_phone">Contact Number (10 Digits) <span class="required">*</span></label>
+                        <input type="text" id="wit_phone" class="form-input font-mono" placeholder="9876543210" pattern="^[6-9][0-9]{9}$" required />
+                        <span class="form-help">Must start with 6, 7, 8, or 9</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('createWitnessModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitWitness">Save Witness</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION TOAST CONTAINER -->
+    <div class="toast-container" id="toastShelf"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

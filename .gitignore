@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables with passwords (DO NOT COMMIT)
+.env
+.env.local
+*.env
+
+# Operating System Files
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*

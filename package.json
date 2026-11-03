@@ -1,0 +1,16 @@
+{
+  "name": "lab11-court-management",
+  "version": "1.0.0",
+  "description": "Judiciary Case Management System - Database Connectivity Lab 11",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test:conn": "node test-conn.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}
