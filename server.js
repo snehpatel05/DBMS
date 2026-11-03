@@ -533,10 +533,14 @@ app.post('/api/witnesses', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`=================================================`);
-    console.log(` District Judiciary Enterprise Management Active`);
-    console.log(` Endpoint: http://localhost:${PORT}`);
-    console.log(` Database: Supabase PostgreSQL 17 (ap-northeast-1)`);
-    console.log(`=================================================`);
-});
+if (require.main === module || !process.env.VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`=================================================`);
+        console.log(` District Judiciary Enterprise Management Active`);
+        console.log(` Endpoint: http://localhost:${PORT}`);
+        console.log(` Database: Supabase PostgreSQL 17 (ap-northeast-1)`);
+        console.log(`=================================================`);
+    });
+}
+
+module.exports = app;
