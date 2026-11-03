@@ -1,5 +1,5 @@
-// app.js - District Court Case Management System (Enterprise UI Controller)
-// Clean, accessible, staff-oriented interface with responsive pagination and right-side detail drawer
+// app.js - District Court Case Management System (RBAC Multi-Role Controller)
+// Handles dual-sided access control: Administration (Clerk, Judge, Administrator) & User (Advocate, Litigant)
 
 let allCases = [];
 let currentPage = 1;
@@ -7,15 +7,82 @@ let pageSize = 25;
 let currentDossierCnr = null;
 let deleteTargetCnr = null;
 
+// Active User Session (Stored in localStorage, default: Clerk #301)
+let currentUser = {
+    user_id: 301,
+    name: 'Vivaan Dave',
+    email: 'user301@courtmail.in',
+    user_role: 'Clerk'
+};
+
 // ==============================================================
-// 1. INITIALIZATION & NAVIGATION TABS
+// 1. INITIALIZATION & RBAC SETUP
 // ==============================================================
 document.addEventListener('DOMContentLoaded', () => {
+    // Restore session if present
+    const saved = localStorage.getItem('court_active_user');
+    if (saved) {
+        try { currentUser = JSON.parse(saved); } catch (e) {}
+    }
+
+    applyUserRoleUI();
     initTabs();
     loadDashboardStats();
     loadCases();
     setupEventListeners();
 });
+
+function applyUserRoleUI() {
+    // Update Header
+    const avatar = document.getElementById('headerAvatar');
+    const nameEl = document.getElementById('headerUserName');
+    const roleEl = document.getElementById('headerUserRole');
+
+    if (avatar) avatar.innerText = getInitials(currentUser.name);
+    if (nameEl) nameEl.innerText = currentUser.name;
+    if (roleEl) roleEl.innerText = currentUser.user_role;
+
+    // RBAC: "+ File New Case" visibility (Clerks & Admins only)
+    const canFile = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
+    const headerBtn = document.getElementById('headerBtnFileCase');
+    const toolbarBtn = document.getElementById('btnFileCaseToolbar');
+    const enrollWitBtn = document.getElementById('btnEnrollWitness');
+
+    if (headerBtn) headerBtn.style.display = canFile ? 'inline-flex' : 'none';
+    if (toolbarBtn) toolbarBtn.style.display = canFile ? 'inline-flex' : 'none';
+    if (enrollWitBtn) enrollWitBtn.style.display = canFile ? 'inline-flex' : 'none';
+
+    // RBAC: Admin Tab visibility (Court Administrator only)
+    const adminTab = document.getElementById('tabNavAdmin');
+    if (adminTab) {
+        adminTab.style.display = currentUser.user_role === 'Court Administrator' ? 'inline-flex' : 'none';
+    }
+
+    // RBAC: Scope Banner (for Litigant & Advocate)
+    const banner = document.getElementById('roleScopeBanner');
+    const bannerMsg = document.getElementById('roleScopeMessage');
+    if (banner && bannerMsg) {
+        if (currentUser.user_role === 'Litigant') {
+            banner.style.display = 'flex';
+            bannerMsg.innerText = `Litigant View (${currentUser.name}): Displaying exclusively legal disputes where you are a named party.`;
+        } else if (currentUser.user_role === 'Advocate') {
+            banner.style.display = 'flex';
+            bannerMsg.innerText = `Counsel View (${currentUser.name}): Displaying active matters assigned to your legal practice.`;
+        } else if (currentUser.user_role === 'Judge') {
+            banner.style.display = 'flex';
+            bannerMsg.innerText = `Bench Docket (${currentUser.name}): Presiding Judicial View. Authorized to pronounce and publish final orders.`;
+        } else {
+            banner.style.display = 'none';
+        }
+    }
+}
+
+function getInitials(name) {
+    if (!name) return 'US';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+}
 
 function initTabs() {
     const tabs = document.querySelectorAll('.nav-tab');
@@ -41,6 +108,7 @@ function switchTab(targetId) {
     else if (targetId === 'tab-hearings') loadHearings();
     else if (targetId === 'tab-orders') loadOrders();
     else if (targetId === 'tab-witnesses') loadWitnesses();
+    else if (targetId === 'tab-admin') loadSystemUsers();
 }
 
 function setupEventListeners() {
@@ -86,11 +154,78 @@ function setupEventListeners() {
 }
 
 // ==============================================================
-// 2. DASHBOARD SUMMARY CARDS & BADGE COUNTS
+// 2. RBAC LOGIN & ROLE SWITCHER
+// ==============================================================
+async function loginPresetUser(userId, expectedRole) {
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: userId })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        currentUser = json.user;
+        localStorage.setItem('court_active_user', JSON.stringify(currentUser));
+        applyUserRoleUI();
+        closeModal('switchUserModal');
+        showToast(`Active session switched to ${currentUser.name} (${currentUser.user_role})`, 'success');
+
+        // Reset to cases tab & reload with new role filters
+        currentPage = 1;
+        switchTab('tab-cases');
+        loadCases();
+        loadDashboardStats();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function handleCustomLogin() {
+    const val = document.getElementById('customUserIdentifier').value.trim();
+    if (!val) {
+        showToast('Please enter a User ID or Email.', 'warning');
+        return;
+    }
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: val })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        currentUser = json.user;
+        localStorage.setItem('court_active_user', JSON.stringify(currentUser));
+        applyUserRoleUI();
+        closeModal('switchUserModal');
+        showToast(`Session authenticated: ${currentUser.name} (${currentUser.user_role})`, 'success');
+
+        currentPage = 1;
+        switchTab('tab-cases');
+        loadCases();
+        loadDashboardStats();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+// Helper: Common request headers with active RBAC credentials
+function getAuthHeaders() {
+    return {
+        'x-user-id': currentUser.user_id ? currentUser.user_id.toString() : '301',
+        'x-user-role': currentUser.user_role || 'Clerk'
+    };
+}
+
+// ==============================================================
+// 3. DASHBOARD SUMMARY CARDS & BADGE COUNTS
 // ==============================================================
 async function loadDashboardStats() {
     try {
-        const res = await fetch('/api/stats');
+        const res = await fetch('/api/stats', { headers: getAuthHeaders() });
         const json = await res.json();
         if (json.success && json.stats) {
             const s = json.stats;
@@ -101,7 +236,6 @@ async function loadDashboardStats() {
             document.getElementById('kpiTotalHearings').innerText = Number(s.total_hearings).toLocaleString();
             document.getElementById('kpiPublishedOrders').innerText = Number(s.published_orders).toLocaleString();
 
-            // Tab badge numbers
             document.getElementById('badgeCases').innerText = s.total_cases;
             document.getElementById('badgeHearings').innerText = s.total_hearings;
             document.getElementById('badgeOrders').innerText = s.total_orders;
@@ -112,7 +246,6 @@ async function loadDashboardStats() {
     }
 }
 
-// Summary card click filter handler
 function filterByCard(status, urgency) {
     switchTab('tab-cases');
     const statusSelect = document.getElementById('caseFilterStatus');
@@ -154,7 +287,7 @@ function clearWitnessFilters() {
 }
 
 // ==============================================================
-// 3. TAB 1: MASTER CASES (court_case) - FULL CRUD & PAGINATION
+// 4. TAB 1: MASTER CASES (WITH ROLE ACCESS PERMISSIONS)
 // ==============================================================
 async function loadCases() {
     const tbody = document.getElementById('caseTableBody');
@@ -172,14 +305,14 @@ async function loadCases() {
         if (status !== 'ALL') params.append('status', status);
         params.append('limit', '100');
 
-        const res = await fetch(`/api/cases?${params.toString()}`);
+        const res = await fetch(`/api/cases?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
         allCases = json.data;
         renderPaginatedCases();
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="8" class="table-loading text-danger">Error loading case records: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
         countLabel.innerText = 'Unable to fetch cases';
         showToast(err.message, 'danger');
     }
@@ -206,7 +339,7 @@ function renderPaginatedCases() {
             <tr>
                 <td colspan="8">
                     <div class="table-empty-box">
-                        <p>No court cases match the selected filter criteria.</p>
+                        <p>No court cases match the active role filters.</p>
                         <button class="btn btn-secondary btn-sm" onclick="clearCaseFilters()">Clear filters</button>
                     </div>
                 </td>
@@ -223,18 +356,20 @@ function renderPaginatedCases() {
     countLabel.innerText = `Showing ${startIndex + 1}–${endIndex} of ${totalRecords} cases`;
     pageRangeLabel.innerText = `Page ${currentPage} of ${totalPages}`;
 
+    // RBAC: Determine which action buttons to display
+    const canEdit = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
+    const canDelete = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
+
     tbody.innerHTML = '';
     displayedCases.forEach(c => {
         const tr = document.createElement('tr');
 
-        // Status badge
         let statusBadge = '';
         if (c.case_status === 'Pending') statusBadge = '<span class="status-badge badge-pending">Pending</span>';
         else if (c.case_status === 'Filed') statusBadge = '<span class="status-badge badge-filed">Filed</span>';
         else if (c.case_status === 'Disposed') statusBadge = '<span class="status-badge badge-disposed">Disposed</span>';
         else statusBadge = `<span class="status-badge badge-filed">${escapeHtml(c.case_status)}</span>`;
 
-        // Urgency badge (Normal is plain text, others are badges)
         let urgencyBadge = '';
         if (c.statutory_urgency === 'Normal') {
             urgencyBadge = '<span class="text-normal-urgency">Normal</span>';
@@ -246,9 +381,18 @@ function renderPaginatedCases() {
             urgencyBadge = escapeHtml(c.statutory_urgency);
         }
 
+        // Actions cell respecting RBAC
+        let actionButtons = `<button class="btn btn-sm btn-outline" onclick="viewDossier('${escapeHtml(c.cnr)}')">View</button>`;
+        if (canEdit) {
+            actionButtons += `<button class="btn btn-sm btn-outline" onclick="openUpdateModal('${escapeHtml(c.cnr)}')">Edit</button>`;
+        }
+        if (canDelete) {
+            actionButtons += `<button class="btn btn-sm btn-danger-outline" onclick="openDeleteModal('${escapeHtml(c.cnr)}')">Delete</button>`;
+        }
+
         tr.innerHTML = `
             <td>
-                <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(c.cnr)}')" title="Click to view complete dossier">
+                <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(c.cnr)}')">
                     ${escapeHtml(c.cnr)}
                 </a>
             </td>
@@ -260,9 +404,7 @@ function renderPaginatedCases() {
             <td>Clerk #${c.registered_by_clerk_id}</td>
             <td class="text-right">
                 <div class="actions-cell">
-                    <button class="btn btn-sm btn-outline" onclick="viewDossier('${escapeHtml(c.cnr)}')">View</button>
-                    <button class="btn btn-sm btn-outline" onclick="openUpdateModal('${escapeHtml(c.cnr)}')">Edit</button>
-                    <button class="btn btn-sm btn-danger-outline" onclick="openDeleteModal('${escapeHtml(c.cnr)}')">Delete</button>
+                    ${actionButtons}
                 </div>
             </td>
         `;
@@ -334,13 +476,16 @@ async function handleCreateCase(e) {
     try {
         const res = await fetch('/api/cases', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
             body: JSON.stringify(payload)
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`Case ${payload.cnr} filed successfully.`, 'success');
+        showToast(`Case ${payload.cnr} registered successfully.`, 'success');
         closeModal('createCaseModal');
         loadCases();
         loadDashboardStats();
@@ -381,7 +526,10 @@ async function handleUpdateCase(e) {
     try {
         const res = await fetch(`/api/cases/${encodeURIComponent(cnr)}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
             body: JSON.stringify(payload)
         });
         const json = await res.json();
@@ -415,7 +563,8 @@ async function handleConfirmDelete() {
 
     try {
         const res = await fetch(`/api/cases/${encodeURIComponent(deleteTargetCnr)}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: getAuthHeaders()
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
@@ -434,13 +583,19 @@ async function handleConfirmDelete() {
 }
 
 // ==============================================================
-// 4. RIGHT-SIDE CASE DETAIL DRAWER (~560px)
+// 5. RIGHT-SIDE CASE DETAIL DRAWER
 // ==============================================================
 async function viewDossier(cnr) {
     currentDossierCnr = cnr;
     const title = document.getElementById('dossierTitle');
     const container = document.getElementById('dossierContent');
     const badgeContainer = document.getElementById('dossierBadges');
+    const editBtn = document.getElementById('btnDrawerEdit');
+
+    // Only Clerk or Admin can edit from drawer
+    if (editBtn) {
+        editBtn.style.display = ['Clerk', 'Court Administrator'].includes(currentUser.user_role) ? 'inline-flex' : 'none';
+    }
 
     title.innerText = cnr;
     badgeContainer.innerHTML = '';
@@ -448,14 +603,13 @@ async function viewDossier(cnr) {
     openModal('dossierModal');
 
     try {
-        const res = await fetch(`/api/cases/${encodeURIComponent(cnr)}/dossier`);
+        const res = await fetch(`/api/cases/${encodeURIComponent(cnr)}/dossier`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
         const d = json.dossier;
         const c = d.case_details;
 
-        // Header Badges
         const statusBadgeClass = c.case_status === 'Pending' ? 'badge-pending' :
                                 c.case_status === 'Filed' ? 'badge-filed' : 'badge-disposed';
         const urgencyBadgeClass = c.statutory_urgency === 'Urgent' ? 'badge-urgent' :
@@ -466,14 +620,22 @@ async function viewDossier(cnr) {
             ${c.statutory_urgency !== 'Normal' ? `<span class="status-badge ${urgencyBadgeClass}">${c.statutory_urgency}</span>` : ''}
         `;
 
-        // Timeline items
+        const isJudge = currentUser.user_role === 'Judge';
         const timelineEvents = [];
+
         (d.hearings || []).forEach(h => {
+            // SRS REQ-03: Judge's private bench notes are visible to Judge, masked for public/litigant
+            const benchText = isJudge
+                ? (h.bench_note ? `Bench Note: "${h.bench_note}"` : 'No bench notes.')
+                : (currentUser.user_role === 'Clerk' || currentUser.user_role === 'Court Administrator'
+                    ? (h.bench_note ? `Note: "${h.bench_note}"` : '—')
+                    : 'Procedural record filed.');
+
             timelineEvents.push({
                 type: 'Hearing',
                 date: h.hearing_date,
                 title: `Hearing #${h.hearing_seq_no}: ${h.outcome || 'Pending Hearing'}`,
-                desc: h.bench_note ? `Note: "${h.bench_note}"` : 'No bench notes.',
+                desc: benchText,
                 meta: h.judge_id ? `Judge #${h.judge_id}` : 'Unassigned',
                 isOrder: false
             });
@@ -497,7 +659,6 @@ async function viewDossier(cnr) {
         });
 
         let html = `
-            <!-- DETAILS GRID -->
             <div class="drawer-section">
                 <div class="drawer-section-title">Case Metadata</div>
                 <div class="details-grid">
@@ -520,20 +681,18 @@ async function viewDossier(cnr) {
                 </div>
             </div>
 
-            <!-- PARTIES -->
             <div class="drawer-section">
                 <div class="drawer-section-title">Involved Parties</div>
                 ${(d.parties || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No parties assigned.</div>' :
                     d.parties.map(p => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
                             <span><strong>${escapeHtml(p.party_role)}:</strong> ${escapeHtml(p.name)}</span>
-                            <span class="text-muted font-mono">ID #${p.litigant_id}</span>
+                            <span class="text-muted font-mono">Litigant #${p.litigant_id}</span>
                         </div>
                     `).join('')
                 }
             </div>
 
-            <!-- ADVOCATES -->
             <div class="drawer-section">
                 <div class="drawer-section-title">Assigned Advocates</div>
                 ${(d.advocates || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No advocates on record.</div>' :
@@ -546,7 +705,6 @@ async function viewDossier(cnr) {
                 }
             </div>
 
-            <!-- PROCEEDINGS & ORDERS TIMELINE -->
             <div class="drawer-section">
                 <div class="drawer-section-title">Hearings & Decrees Timeline</div>
                 <div class="timeline-track">
@@ -566,14 +724,13 @@ async function viewDossier(cnr) {
                 </div>
             </div>
 
-            <!-- DOCUMENTS -->
             <div class="drawer-section">
-                <div class="drawer-section-title">Filed Case Documents</div>
+                <div class="drawer-section-title">Case Documents (R15)</div>
                 ${(!d.documents || d.documents.length === 0) ? '<div class="text-muted" style="font-size:13px;">No digital documents uploaded.</div>' :
                     d.documents.map(doc => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
                             <span><strong>#${doc.doc_seq_no} ${escapeHtml(doc.document_type)}</strong> (${formatDate(doc.upload_date)})</span>
-                            <span class="text-muted">By Advocate #${doc.advocate_id}</span>
+                            <span class="text-muted">Advocate #${doc.advocate_id}</span>
                         </div>
                     `).join('')
                 }
@@ -587,7 +744,7 @@ async function viewDossier(cnr) {
 }
 
 // ==============================================================
-// 5. TAB 2: HEARINGS SCHEDULE (GROUPED BY DATE)
+// 6. TAB 2: HEARINGS SCHEDULE
 // ==============================================================
 async function loadHearings() {
     const tbody = document.getElementById('hearingTableBody');
@@ -603,7 +760,7 @@ async function loadHearings() {
         if (outcome !== 'ALL') params.append('outcome', outcome);
         params.append('limit', '100');
 
-        const res = await fetch(`/api/hearings?${params.toString()}`);
+        const res = await fetch(`/api/hearings?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
@@ -624,7 +781,6 @@ function renderHearingsTable(hearings) {
         return;
     }
 
-    // Group hearings by Date
     let lastDate = null;
     hearings.forEach(h => {
         const dateStr = h.hearing_date ? formatDate(h.hearing_date) : 'Unscheduled / Unlisted';
@@ -660,7 +816,7 @@ function renderHearingsTable(hearings) {
 }
 
 // ==============================================================
-// 6. TAB 3: ORDERS & JUDGMENTS (WITH PUBLISH ACTION)
+// 7. TAB 3: ORDERS & JUDGMENTS (WITH JUDGE PUBLISH PRIVILEGE)
 // ==============================================================
 async function loadOrders() {
     const tbody = document.getElementById('orderTableBody');
@@ -678,7 +834,7 @@ async function loadOrders() {
         if (pub !== 'ALL') params.append('publish_status', pub);
         params.append('limit', '100');
 
-        const res = await fetch(`/api/orders?${params.toString()}`);
+        const res = await fetch(`/api/orders?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
@@ -699,15 +855,25 @@ function renderOrdersTable(orders) {
         return;
     }
 
+    // RBAC: Only Judge or Court Administrator can publish orders
+    const canPublish = ['Judge', 'Court Administrator'].includes(currentUser.user_role);
+
     orders.forEach(o => {
         const tr = document.createElement('tr');
         const pubBadge = o.publish_status === 'Published'
             ? '<span class="status-badge badge-published">Published</span>'
             : '<span class="status-badge badge-draft">Draft</span>';
 
-        const actionBtn = o.publish_status === 'Draft'
-            ? `<button class="btn btn-sm btn-outline" onclick="publishOrder('${escapeHtml(o.cnr)}', ${o.order_seq_no})">Publish</button>`
-            : '<span class="text-muted" style="font-size:12px;">Archived</span>';
+        let actionBtn = '';
+        if (o.publish_status === 'Draft') {
+            if (canPublish) {
+                actionBtn = `<button class="btn btn-sm btn-outline" onclick="publishOrder('${escapeHtml(o.cnr)}', ${o.order_seq_no})">Sign & Publish</button>`;
+            } else {
+                actionBtn = '<span class="text-muted" style="font-size:12px;">Awaiting Bench Sign</span>';
+            }
+        } else {
+            actionBtn = '<span class="text-muted" style="font-size:12px;">Archived</span>';
+        }
 
         tr.innerHTML = `
             <td>
@@ -730,12 +896,13 @@ function renderOrdersTable(orders) {
 async function publishOrder(cnr, seq) {
     try {
         const res = await fetch(`/api/orders/${encodeURIComponent(cnr)}/${seq}/publish`, {
-            method: 'PUT'
+            method: 'PUT',
+            headers: getAuthHeaders()
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`Order #${seq} for case ${cnr} published.`, 'success');
+        showToast(`Order #${seq} for case ${cnr} published with judicial signature.`, 'success');
         loadOrders();
         loadDashboardStats();
     } catch (err) {
@@ -744,7 +911,7 @@ async function publishOrder(cnr, seq) {
 }
 
 // ==============================================================
-// 7. TAB 4: WITNESSES
+// 8. TAB 4: WITNESSES
 // ==============================================================
 async function loadWitnesses() {
     const tbody = document.getElementById('witnessTableBody');
@@ -758,7 +925,7 @@ async function loadWitnesses() {
         if (search) params.append('search', search);
         params.append('limit', '100');
 
-        const res = await fetch(`/api/witnesses?${params.toString()}`);
+        const res = await fetch(`/api/witnesses?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
@@ -806,7 +973,10 @@ async function handleCreateWitness(e) {
     try {
         const res = await fetch('/api/witnesses', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
             body: JSON.stringify(payload)
         });
         const json = await res.json();
@@ -825,7 +995,48 @@ async function handleCreateWitness(e) {
 }
 
 // ==============================================================
-// 8. MODAL, DRAWER & TOAST HELPERS
+// 9. TAB 5: COURT ADMINISTRATOR (SYSTEM USERS & AUDIT)
+// ==============================================================
+async function loadSystemUsers() {
+    const tbody = document.getElementById('adminUserTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Querying system_users and ISA subtypes...</td></tr>';
+
+    try {
+        const res = await fetch('/api/users', { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        tbody.innerHTML = '';
+        json.data.forEach(u => {
+            const tr = document.createElement('tr');
+            let roleBadgeClass = 'badge-clerk';
+            if (u.user_role === 'Judge') roleBadgeClass = 'badge-judge';
+            else if (u.user_role === 'Court Administrator') roleBadgeClass = 'badge-admin';
+            else if (u.user_role === 'Advocate') roleBadgeClass = 'badge-advocate';
+            else if (u.user_role === 'Litigant') roleBadgeClass = 'badge-litigant';
+
+            let extraInfo = '—';
+            if (u.bar_enrollment_no) extraInfo = `Bar No: ${escapeHtml(u.bar_enrollment_no)}`;
+            else if (u.localization_setting) extraInfo = `Locale: ${escapeHtml(u.localization_setting)}`;
+
+            tr.innerHTML = `
+                <td class="font-mono">#${u.user_id}</td>
+                <td><strong>${escapeHtml(u.name)}</strong></td>
+                <td class="font-mono" style="color:var(--text-muted);">${escapeHtml(u.email)}</td>
+                <td><span class="rbac-badge ${roleBadgeClass}">${escapeHtml(u.user_role)}</span></td>
+                <td>${extraInfo}</td>
+                <td class="text-muted font-mono">${u.created_by_admin_id ? `Admin #${u.created_by_admin_id}` : 'Root'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
+        showToast(err.message, 'danger');
+    }
+}
+
+// ==============================================================
+// 10. MODAL & TOAST HELPERS
 // ==============================================================
 function openModal(id) {
     const el = document.getElementById(id);

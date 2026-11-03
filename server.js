@@ -12,6 +12,61 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ==============================================================
+// 1. AUTHENTICATION & ROLE SWITCHING (RBAC)
+// ==============================================================
+app.post('/api/auth/login', async (req, res) => {
+    const { identifier } = req.body;
+    if (!identifier) {
+        return res.status(400).json({ success: false, error: 'User ID or Email is required.' });
+    }
+
+    try {
+        const isNum = !isNaN(identifier);
+        const sql = isNum
+            ? 'SELECT user_id, name, email, user_role FROM system_users WHERE user_id = $1;'
+            : 'SELECT user_id, name, email, user_role FROM system_users WHERE email ILIKE $1;';
+        const params = [isNum ? parseInt(identifier, 10) : identifier.trim()];
+
+        const result = await query(sql, params);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'User account not found.' });
+        }
+
+        const user = result.rows[0];
+        console.log(`[RBAC AUTH] Active user session: ${user.name} (${user.user_role})`);
+        res.json({ success: true, user });
+    } catch (err) {
+        console.error('[AUTH ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Admin endpoint: List system users
+app.get('/api/users', async (req, res) => {
+    const role = req.headers['x-user-role'];
+    if (role !== 'Court Administrator') {
+        return res.status(403).json({ success: false, error: 'Access denied. Administrator privileges required.' });
+    }
+
+    try {
+        const sql = `
+            SELECT u.user_id, u.name, u.email, u.user_role, u.created_by_admin_id,
+                   a.bar_enrollment_no, ca.localization_setting
+            FROM system_users u
+            LEFT JOIN advocate a ON u.user_id = a.user_id
+            LEFT JOIN court_administrator ca ON u.user_id = ca.user_id
+            ORDER BY u.user_id ASC
+            LIMIT 100;
+        `;
+        const result = await query(sql);
+        res.json({ success: true, rowCount: result.rowCount, data: result.rows });
+    } catch (err) {
+        console.error('[USERS ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
 // 1. DASHBOARD & SYSTEM METRICS
 // ==============================================================
 app.get('/api/stats', async (req, res) => {
@@ -39,41 +94,60 @@ app.get('/api/stats', async (req, res) => {
 // 2. TABLE 1: COURT_CASE (R7) - FULL CRUD
 // ==============================================================
 
-// READ CASES (with filtering)
+// READ CASES (with role-based access filtering & search)
 app.get('/api/cases', async (req, res) => {
     try {
         const { search, status, urgency, limit } = req.query;
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+
         let conditions = [];
         let params = [];
+        let joinClause = '';
+
+        // RBAC Filter: Litigants only see cases they are involved in
+        if (userRole === 'Litigant' && userId) {
+            joinClause += ` JOIN case_party cp ON c.cnr = cp.cnr`;
+            params.push(userId);
+            conditions.push(`cp.litigant_id = $${params.length}`);
+        }
+        // RBAC Filter: Advocates only see cases they are assigned to
+        else if (userRole === 'Advocate' && userId) {
+            joinClause += ` JOIN case_advocate ca ON c.cnr = ca.cnr`;
+            params.push(userId);
+            conditions.push(`ca.advocate_id = $${params.length}`);
+        }
+        // Judges, Clerks, and Court Administrators have universal access to all cases (SRS Matrix)
 
         if (search) {
             params.push(`%${search.trim()}%`);
-            conditions.push(`(cnr ILIKE $${params.length} OR case_number ILIKE $${params.length} OR standardized_filing_number ILIKE $${params.length})`);
+            conditions.push(`(c.cnr ILIKE $${params.length} OR c.case_number ILIKE $${params.length} OR c.standardized_filing_number ILIKE $${params.length})`);
         }
         if (status && status !== 'ALL') {
             params.push(status);
-            conditions.push(`case_status = $${params.length}`);
+            conditions.push(`c.case_status = $${params.length}`);
         }
         if (urgency && urgency !== 'ALL') {
             params.push(urgency);
-            conditions.push(`statutory_urgency = $${params.length}`);
+            conditions.push(`c.statutory_urgency = $${params.length}`);
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const rowLimit = parseInt(limit || '50', 10);
+        const rowLimit = parseInt(limit || '100', 10);
         params.push(rowLimit);
 
         const sql = `
-            SELECT cnr, standardized_filing_number, case_number, fir_number, 
-                   statutory_urgency, case_status, registered_by_clerk_id
-            FROM court_case
+            SELECT DISTINCT c.cnr, c.standardized_filing_number, c.case_number, c.fir_number, 
+                   c.statutory_urgency, c.case_status, c.registered_by_clerk_id
+            FROM court_case c
+            ${joinClause}
             ${whereClause}
-            ORDER BY cnr DESC
+            ORDER BY c.cnr DESC
             LIMIT $${params.length};
         `;
 
         const result = await query(sql, params);
-        console.log(`[READ court_case] Fetched ${result.rowCount} records`);
+        console.log(`[READ court_case] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
 
         res.json({
             success: true,
@@ -160,6 +234,11 @@ app.get('/api/cases/:cnr/dossier', async (req, res) => {
 
 // CREATE (INSERT)
 app.post('/api/cases', async (req, res) => {
+    const userRole = req.headers['x-user-role'];
+    if (userRole && !['Clerk', 'Court Administrator', 'Lead Advocate', 'Advocate'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied: Only Court Clerks and authorized advocates may file cases.' });
+    }
+
     const { cnr, filing_no, case_no, fir_no, urgency, status, clerk_id } = req.body;
 
     if (!cnr || !filing_no || !case_no || !clerk_id) {
@@ -244,6 +323,11 @@ app.put('/api/cases/:cnr', async (req, res) => {
 
 // DELETE
 app.delete('/api/cases/:cnr', async (req, res) => {
+    const userRole = req.headers['x-user-role'];
+    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied: Case deletion is restricted to Registry Clerks and Administrators.' });
+    }
+
     const { cnr } = req.params;
 
     try {
@@ -358,6 +442,11 @@ app.get('/api/orders', async (req, res) => {
 
 // PUBLISH ORDER
 app.put('/api/orders/:cnr/:seq/publish', async (req, res) => {
+    const userRole = req.headers['x-user-role'];
+    if (userRole && !['Judge', 'Court Administrator'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied: Only a presiding Judge has authority to sign and publish judicial decrees.' });
+    }
+
     const { cnr, seq } = req.params;
     try {
         const sql = `

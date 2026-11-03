@@ -137,20 +137,142 @@ body {
 .user-role-badge {
     display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 6px 12px;
-    background-color: var(--bg-page);
+    gap: 9px;
+    padding: 4px 12px;
+    background-color: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.user-role-badge:hover {
+    border-color: var(--primary);
+    background-color: var(--primary-tint);
+}
+
+.user-avatar {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background-color: var(--primary);
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.user-info-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-name {
     font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.2;
+}
+
+.user-role-tag {
+    font-size: 11px;
     color: var(--text-muted);
 }
 
-.user-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background-color: #10B981;
+.chevron-icon {
+    color: var(--text-muted);
+    margin-left: 2px;
+}
+
+/* Role Scope Notice Banner */
+.role-scope-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: var(--primary-tint);
+    border: 1px solid #C4DACF;
+    border-radius: var(--radius-md);
+    padding: 10px 16px;
+    font-size: 13.5px;
+    color: var(--primary);
+    font-weight: 500;
+    margin-bottom: 20px;
+}
+
+/* RBAC Switcher Modal */
+.rbac-section-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+
+.rbac-role-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.rbac-user-card {
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rbac-user-card:hover {
+    border-color: var(--primary);
+    background-color: #F8FAF9;
+    box-shadow: var(--shadow-card);
+}
+
+.rbac-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rbac-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.rbac-card-email {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.rbac-badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    width: fit-content;
+}
+
+.badge-clerk { background: #E6EFEB; color: #1F4D3F; }
+.badge-judge { background: #FEF3C7; color: #B7791F; }
+.badge-admin { background: #F4EBFF; color: #6941C6; }
+.badge-advocate { background: #E0F2FE; color: #1D5FA8; }
+.badge-litigant { background: #F2F4F7; color: #667085; }
+
+.rbac-card-desc {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
 }
 
 .btn-header {

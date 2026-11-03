@@ -27,11 +27,17 @@
                 </div>
             </div>
             <div class="header-right">
-                <div class="user-role-badge">
-                    <span class="user-dot"></span>
-                    <span class="user-name">Clerk Office (Courtroom 2)</span>
+                <!-- Role-Based Active User Pill with Click to Switch -->
+                <div class="user-role-badge" id="btnUserSwitcher" onclick="openModal('switchUserModal')" title="Click to switch role or account">
+                    <span class="user-avatar" id="headerAvatar">CK</span>
+                    <div class="user-info-text">
+                        <span class="user-name" id="headerUserName">Vivaan Dave</span>
+                        <span class="user-role-tag" id="headerUserRole">Clerk</span>
+                    </div>
+                    <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <button class="btn btn-primary btn-header" onclick="openModal('createCaseModal')">
+                <!-- Action button (Conditional visibility per role) -->
+                <button class="btn btn-primary btn-header" id="headerBtnFileCase" onclick="openModal('createCaseModal')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     File New Case
                 </button>
@@ -42,12 +48,18 @@
     <!-- MAIN CENTRED CONTAINER -->
     <div class="main-layout">
 
+        <!-- Role Scope Notice Banner (Appears for Litigant / Advocate) -->
+        <div class="role-scope-banner" id="roleScopeBanner" style="display: none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="roleScopeMessage">Showing only cases linked to your account.</span>
+        </div>
+
         <!-- SUMMARY CARDS -->
         <section class="summary-cards">
             <div class="card card-total" onclick="filterByCard('ALL', 'ALL')" title="Click to view all cases">
                 <span class="card-label">Total Cases</span>
                 <span class="card-num" id="kpiTotalCases">--</span>
-                <span class="card-caption">All registered filings</span>
+                <span class="card-caption">Registered filings</span>
             </div>
             <div class="card card-pending" onclick="filterByCard('Pending', 'ALL')" title="Click to filter Pending cases">
                 <span class="card-label">Pending</span>
@@ -94,6 +106,10 @@
                 Witnesses
                 <span class="tab-badge" id="badgeWitnesses">--</span>
             </button>
+            <button class="nav-tab admin-only-tab" id="tabNavAdmin" data-tab="tab-admin" style="display: none;">
+                User Accounts (Admin)
+                <span class="tab-badge" id="badgeUsers">500</span>
+            </button>
         </nav>
 
         <!-- ==============================================================
@@ -128,7 +144,7 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
                             Refresh
                         </button>
-                        <button class="btn btn-primary" onclick="openModal('createCaseModal')">
+                        <button class="btn btn-primary" id="btnFileCaseToolbar" onclick="openModal('createCaseModal')">
                             + File New Case
                         </button>
                     </div>
@@ -294,7 +310,7 @@
                     <div class="toolbar-right">
                         <span class="showing-count" id="witnessShowingText">Loading witnesses...</span>
                         <button class="btn btn-secondary" onclick="loadWitnesses()">Refresh</button>
-                        <button class="btn btn-primary" onclick="openModal('createWitnessModal')">Enroll Witness</button>
+                        <button class="btn btn-primary" id="btnEnrollWitness" onclick="openModal('createWitnessModal')">Enroll Witness</button>
                     </div>
                 </div>
 
@@ -316,11 +332,144 @@
             </div>
         </section>
 
+        <!-- ==============================================================
+             TAB 5: COURT ADMINISTRATOR (USERS & ACCESS MATRIX)
+             ============================================================== -->
+        <section class="tab-pane" id="tab-admin">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <span style="font-weight:600; font-size:14px; color:var(--primary);">System User Accounts (system_users & ISA Subtypes)</span>
+                        <span class="text-muted" style="font-size:13px;">— 500 Disjoint User Records</span>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-secondary" onclick="loadSystemUsers()">Refresh Accounts</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Full Name</th>
+                                <th>Official Email</th>
+                                <th>Assigned System Role</th>
+                                <th>Role-Specific Metadata</th>
+                                <th>Admin Supervisor</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminUserTableBody">
+                            <tr><td colspan="6" class="table-loading">Loading user records...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
         <!-- FOOTER -->
         <footer class="app-footer">
             <span>MC212 DBMS - Team 7 - Powered by PostgreSQL on Supabase</span>
         </footer>
 
+    </div>
+
+    <!-- ==============================================================
+         MODAL: SWITCH USER / RBAC ROLE
+         ============================================================== -->
+    <div class="modal-overlay" id="switchUserModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Switch Active User & Role</h2>
+                    <span class="modal-desc">Simulate both Administration and User-side access</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('switchUserModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="rbac-section-title">Administration Side Roles</div>
+                <div class="rbac-role-grid">
+                    <!-- Clerk -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(301, 'Clerk')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#1F4D3F; color:#FFF;">CK</span>
+                            <div>
+                                <div class="rbac-card-name">Vivaan Dave</div>
+                                <div class="rbac-card-email">user301@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-clerk">Role: Clerk (Staff)</div>
+                        <div class="rbac-card-desc">Full Registry Access: File, Edit, Delete cases, and enroll witnesses.</div>
+                    </div>
+
+                    <!-- Judge -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(201, 'Judge')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#B7791F; color:#FFF;">JD</span>
+                            <div>
+                                <div class="rbac-card-name">Vivaan Modi</div>
+                                <div class="rbac-card-email">user201@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-judge">Role: Judge (Bench)</div>
+                        <div class="rbac-card-desc">Judicial Authority: View all cases, sign decrees, publish Final Judgments.</div>
+                    </div>
+
+                    <!-- Administrator -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(401, 'Court Administrator')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#6941C6; color:#FFF;">AD</span>
+                            <div>
+                                <div class="rbac-card-name">Vivaan Patel</div>
+                                <div class="rbac-card-email">user401@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-admin">Role: Court Administrator</div>
+                        <div class="rbac-card-desc">System Administration: Full access plus User Accounts & Security Matrix tab.</div>
+                    </div>
+                </div>
+
+                <div class="rbac-section-title mt-3">User Side Roles</div>
+                <div class="rbac-role-grid">
+                    <!-- Advocate -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(1, 'Advocate')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#1D5FA8; color:#FFF;">AV</span>
+                            <div>
+                                <div class="rbac-card-name">Vivaan Patel</div>
+                                <div class="rbac-card-email">user1@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-advocate">Role: Advocate (Counsel)</div>
+                        <div class="rbac-card-desc">Client Legal Counsel: View assigned cases, filings, and hearing schedules.</div>
+                    </div>
+
+                    <!-- Litigant -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(101, 'Litigant')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#667085; color:#FFF;">LT</span>
+                            <div>
+                                <div class="rbac-card-name">Vivaan Joshi</div>
+                                <div class="rbac-card-email">user101@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-litigant">Role: Litigant (Citizen)</div>
+                        <div class="rbac-card-desc">Party to Case: Read-only access strictly restricted to own dispute records.</div>
+                    </div>
+                </div>
+
+                <div class="mt-3" style="border-top:1px solid var(--border); padding-top:14px;">
+                    <label class="form-label">Or Custom Login via User ID or Email:</label>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="customUserIdentifier" class="form-input" placeholder="e.g. 102 or user102@courtmail.in" />
+                        <button type="button" class="btn btn-secondary" onclick="handleCustomLogin()">Switch</button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('switchUserModal')">Close</button>
+            </div>
+        </div>
     </div>
 
     <!-- ==============================================================
