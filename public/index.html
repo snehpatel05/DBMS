@@ -54,8 +54,8 @@
             <span id="roleScopeMessage">Showing only cases linked to your account.</span>
         </div>
 
-        <!-- SUMMARY CARDS -->
-        <section class="summary-cards">
+        <!-- SUMMARY CARDS (Dynamic & Role-Tailored) -->
+        <section class="summary-cards" id="kpiCardsRow">
             <div class="card card-total" onclick="filterByCard('ALL', 'ALL')" title="Click to view all cases">
                 <span class="card-label">Total Cases</span>
                 <span class="card-num" id="kpiTotalCases">--</span>
@@ -88,27 +88,39 @@
             </div>
         </section>
 
-        <!-- TABS BAR -->
-        <nav class="nav-tabs-bar">
-            <button class="nav-tab active" data-tab="tab-cases">
-                Cases
+        <!-- TABS BAR (Customized per User Role) -->
+        <nav class="nav-tabs-bar" id="appTabsBar">
+            <button class="nav-tab active" id="tabNavCases" data-tab="tab-cases">
+                Cases Ledger
                 <span class="tab-badge" id="badgeCases">--</span>
             </button>
-            <button class="nav-tab" data-tab="tab-hearings">
-                Hearings
+            <button class="nav-tab" id="tabNavHearings" data-tab="tab-hearings">
+                Hearings Calendar
                 <span class="tab-badge" id="badgeHearings">--</span>
             </button>
-            <button class="nav-tab" data-tab="tab-orders">
-                Orders
+            <button class="nav-tab" id="tabNavOrders" data-tab="tab-orders">
+                Orders & Decrees
                 <span class="tab-badge" id="badgeOrders">--</span>
             </button>
-            <button class="nav-tab" data-tab="tab-witnesses">
-                Witnesses
+            <button class="nav-tab" id="tabNavWitnesses" data-tab="tab-witnesses">
+                Witness Registry
                 <span class="tab-badge" id="badgeWitnesses">--</span>
+            </button>
+            <button class="nav-tab" id="tabNavDocuments" data-tab="tab-documents">
+                Pleadings & Documents
+                <span class="tab-badge" id="badgeDocuments">--</span>
+            </button>
+            <button class="nav-tab" id="tabNavVakalatnama" data-tab="tab-vakalatnama">
+                Vakalatnama Powers
+                <span class="tab-badge" id="badgeVakalatnama">--</span>
             </button>
             <button class="nav-tab admin-only-tab" id="tabNavAdmin" data-tab="tab-admin" style="display: none;">
                 User Accounts (Admin)
                 <span class="tab-badge" id="badgeUsers">500</span>
+            </button>
+            <button class="nav-tab admin-only-tab" id="tabNavAudit" data-tab="tab-audit" style="display: none;">
+                18 BCNF Tables Audit
+                <span class="tab-badge" id="badgeAudit">18</span>
             </button>
         </nav>
 
@@ -232,10 +244,11 @@
                                 <th>Bench Minutes</th>
                                 <th>Presiding Judge</th>
                                 <th>Daily Cause List</th>
+                                <th class="text-right">Action</th>
                             </tr>
                         </thead>
                         <tbody id="hearingTableBody">
-                            <tr><td colspan="7" class="table-loading">Loading hearing schedule...</td></tr>
+                            <tr><td colspan="8" class="table-loading">Loading hearing schedule...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -361,6 +374,122 @@
                         </thead>
                         <tbody id="adminUserTableBody">
                             <tr><td colspan="6" class="table-loading">Loading user records...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 6: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
+             ============================================================== -->
+        <section class="tab-pane" id="tab-documents">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <div class="search-wrap">
+                            <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="docSearchInput" placeholder="Filter by Case CNR..." />
+                        </div>
+                        <select id="docFilterType" class="form-select">
+                            <option value="ALL">All Document Types</option>
+                            <option value="Petition">Petition</option>
+                            <option value="Affidavit">Affidavit</option>
+                            <option value="Evidence">Evidence</option>
+                            <option value="Written Statement">Written Statement</option>
+                            <option value="Application">Application</option>
+                        </select>
+                    </div>
+                    <div class="toolbar-right">
+                        <span class="showing-count" id="docShowingText">Loading documents...</span>
+                        <button class="btn btn-secondary" onclick="loadDocuments()">Refresh</button>
+                        <button class="btn btn-primary" id="btnUploadDocToolbar" onclick="openModal('uploadDocModal')">+ Upload Document</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Case No. (CNR)</th>
+                                <th>Doc Seq</th>
+                                <th>Document Type</th>
+                                <th>Filing Date</th>
+                                <th>Counsel On Record</th>
+                                <th class="text-right">Verification</th>
+                            </tr>
+                        </thead>
+                        <tbody id="docTableBody">
+                            <tr><td colspan="6" class="table-loading">Loading legal pleadings & documents...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 7: VAKALATNAMA AUTHORIZATIONS (R16 - Digital Powers of Attorney)
+             ============================================================== -->
+        <section class="tab-pane" id="tab-vakalatnama">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <span style="font-weight:600; font-size:14px; color:var(--primary);">Digital Vakalatnama Authorizations (R16)</span>
+                        <span class="text-muted" style="font-size:13px;">— Client representation powers on record</span>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-secondary" onclick="loadVakalatnamas()">Refresh</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Auth ID</th>
+                                <th>Date Executed</th>
+                                <th>E-Signature Status</th>
+                                <th>Case Reference (CNR)</th>
+                                <th>Represented Litigant</th>
+                                <th>Authorized Advocate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="vakalatnamaTableBody">
+                            <tr><td colspan="6" class="table-loading">Loading Vakalatnama filings...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==============================================================
+             TAB 8: DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+             ============================================================== -->
+        <section class="tab-pane" id="tab-audit">
+            <div class="content-surface">
+                <div class="table-toolbar">
+                    <div class="toolbar-left">
+                        <span style="font-weight:600; font-size:14px; color:var(--primary);">18 BCNF Relational Tables Audit</span>
+                        <span class="text-muted" style="font-size:13px;">— Live Supabase database integrity monitor</span>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="btn btn-secondary" onclick="loadSystemHealth()">Run Audit Check</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Rel. ID</th>
+                                <th>Table Name</th>
+                                <th>Entity / Relation Purpose</th>
+                                <th>Tuples Count</th>
+                                <th>BCNF Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableBody">
+                            <tr><td colspan="5" class="table-loading">Auditing database tables...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -674,6 +803,92 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('createWitnessModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="btnSubmitWitness">Save Witness</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: JUDGE BENCH NOTE & OUTCOME RECORDER
+         ============================================================== -->
+    <div class="modal-overlay" id="judgeBenchModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">Judicial Bench Proceedings</h2>
+                    <span class="modal-desc">Record official hearing outcome and confidential bench notes (R11)</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('judgeBenchModal')">&times;</button>
+            </div>
+            <form id="judgeBenchForm">
+                <div class="modal-body">
+                    <input type="hidden" id="bench_hearing_cnr" />
+                    <input type="hidden" id="bench_hearing_seq" />
+                    
+                    <div class="form-group">
+                        <label class="form-label">Case Reference (CNR) &amp; Sequence</label>
+                        <div class="font-mono text-muted" id="bench_display_cnr" style="font-weight:600; font-size:13px;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="bench_outcome">Trial Hearing Outcome <span class="required">*</span></label>
+                        <select id="bench_outcome" class="form-select" style="width: 100%;" required>
+                            <option value="Arguments Heard">Arguments Heard</option>
+                            <option value="Evidence Recorded">Evidence Recorded</option>
+                            <option value="Adjourned">Adjourned</option>
+                            <option value="Order Reserved">Order Reserved</option>
+                            <option value="Disposed">Disposed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="bench_note">Private Judicial Bench Notes</label>
+                        <textarea id="bench_note" class="form-input" rows="4" placeholder="Enter judicial observations, witness demeanor notes, or trial directions..."></textarea>
+                        <span class="form-help">Bench notes are part of Relation R11 and retained for appellate review</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('judgeBenchModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSaveBenchRecord">Save Bench Record</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: UPLOAD LEGAL DOCUMENT (ADVOCATE DESK)
+         ============================================================== -->
+    <div class="modal-overlay" id="uploadDocModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title">File Legal Pleading / Document</h2>
+                    <span class="modal-desc">Submit formal petition, affidavit, or evidentiary exhibit (R15)</span>
+                </div>
+                <button class="modal-close" onclick="closeModal('uploadDocModal')">&times;</button>
+            </div>
+            <form id="uploadDocForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="doc_cnr">Target Case CNR <span class="required">*</span></label>
+                        <input type="text" id="doc_cnr" class="form-input font-mono" placeholder="e.g. GJAH010000012024" required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="doc_type">Document Type <span class="required">*</span></label>
+                        <select id="doc_type" class="form-select" style="width:100%;" required>
+                            <option value="Petition">Petition</option>
+                            <option value="Affidavit">Affidavit</option>
+                            <option value="Evidence">Evidence</option>
+                            <option value="Written Statement">Written Statement</option>
+                            <option value="Application">Application</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Submitting Counsel ID</label>
+                        <input type="text" id="doc_adv_id" class="form-input font-mono" readonly />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('uploadDocModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitDoc">Submit Document</button>
                 </div>
             </form>
         </div>

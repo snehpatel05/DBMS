@@ -7,7 +7,7 @@ let pageSize = 25;
 let currentDossierCnr = null;
 let deleteTargetCnr = null;
 
-// Active User Session (Stored in localStorage, default: Clerk #301)
+// Active User Session (Default: Registry Clerk Vivaan Dave #301)
 let currentUser = {
     user_id: 301,
     name: 'Vivaan Dave',
@@ -19,21 +19,31 @@ let currentUser = {
 // 1. INITIALIZATION & RBAC SETUP
 // ==============================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // Restore session if present
-    const saved = localStorage.getItem('court_active_user');
+    // Check if user explicitly switched roles in this browser session
+    const saved = sessionStorage.getItem('court_active_user');
     if (saved) {
         try { currentUser = JSON.parse(saved); } catch (e) {}
+    } else {
+        // Initial visit always defaults to Clerk Vivaan Dave
+        currentUser = {
+            user_id: 301,
+            name: 'Vivaan Dave',
+            email: 'user301@courtmail.in',
+            user_role: 'Clerk'
+        };
     }
 
     applyUserRoleUI();
     initTabs();
     loadDashboardStats();
-    loadCases();
+    
+    // Always start on Cases Ledger tab
+    switchTab('tab-cases');
     setupEventListeners();
 });
 
 function applyUserRoleUI() {
-    // Update Header
+    // Update Header Profile Pill
     const avatar = document.getElementById('headerAvatar');
     const nameEl = document.getElementById('headerUserName');
     const roleEl = document.getElementById('headerUserRole');
@@ -42,37 +52,87 @@ function applyUserRoleUI() {
     if (nameEl) nameEl.innerText = currentUser.name;
     if (roleEl) roleEl.innerText = currentUser.user_role;
 
-    // RBAC: "+ File New Case" visibility (Clerks & Admins only)
-    const canFile = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
+    // Role Flags
+    const isClerk = currentUser.user_role === 'Clerk';
+    const isJudge = currentUser.user_role === 'Judge';
+    const isAdvocate = currentUser.user_role === 'Advocate';
+    const isLitigant = currentUser.user_role === 'Litigant';
+    const isAdmin = currentUser.user_role === 'Court Administrator';
+
+    // Filing & Registry Action Buttons
+    const canFile = isClerk || isAdmin;
     const headerBtn = document.getElementById('headerBtnFileCase');
     const toolbarBtn = document.getElementById('btnFileCaseToolbar');
     const enrollWitBtn = document.getElementById('btnEnrollWitness');
+    const uploadDocBtn = document.getElementById('btnUploadDocToolbar');
 
     if (headerBtn) headerBtn.style.display = canFile ? 'inline-flex' : 'none';
     if (toolbarBtn) toolbarBtn.style.display = canFile ? 'inline-flex' : 'none';
     if (enrollWitBtn) enrollWitBtn.style.display = canFile ? 'inline-flex' : 'none';
+    if (uploadDocBtn) uploadDocBtn.style.display = (isAdvocate || isClerk || isAdmin) ? 'inline-flex' : 'none';
 
-    // RBAC: Admin Tab visibility (Court Administrator only)
-    const adminTab = document.getElementById('tabNavAdmin');
-    if (adminTab) {
-        adminTab.style.display = currentUser.user_role === 'Court Administrator' ? 'inline-flex' : 'none';
+    // Tabs Visibility & Dynamic Labels
+    const tabCases = document.getElementById('tabNavCases');
+    const tabHearings = document.getElementById('tabNavHearings');
+    const tabOrders = document.getElementById('tabNavOrders');
+    const tabWitnesses = document.getElementById('tabNavWitnesses');
+    const tabDocs = document.getElementById('tabNavDocuments');
+    const tabVak = document.getElementById('tabNavVakalatnama');
+    const tabAdmin = document.getElementById('tabNavAdmin');
+    const tabAudit = document.getElementById('tabNavAudit');
+
+    // Reset visibility
+    [tabCases, tabHearings, tabOrders, tabWitnesses, tabDocs, tabVak, tabAdmin, tabAudit].forEach(t => {
+        if (t) t.style.display = 'none';
+    });
+
+    if (isClerk) {
+        if (tabCases) { tabCases.style.display = 'inline-flex'; tabCases.firstChild.textContent = 'Cases Registry '; }
+        if (tabHearings) { tabHearings.style.display = 'inline-flex'; tabHearings.firstChild.textContent = 'Cause Lists & Hearings '; }
+        if (tabOrders) { tabOrders.style.display = 'inline-flex'; tabOrders.firstChild.textContent = 'Orders Archive '; }
+        if (tabWitnesses) { tabWitnesses.style.display = 'inline-flex'; tabWitnesses.firstChild.textContent = 'Witness Registry '; }
+        if (tabDocs) { tabDocs.style.display = 'inline-flex'; tabDocs.firstChild.textContent = 'Pleadings & Exhibits '; }
+        if (tabVak) { tabVak.style.display = 'inline-flex'; tabVak.firstChild.textContent = 'Vakalatnama Powers '; }
+    } else if (isJudge) {
+        if (tabHearings) { tabHearings.style.display = 'inline-flex'; tabHearings.firstChild.textContent = 'Judicial Bench & Hearings '; }
+        if (tabOrders) { tabOrders.style.display = 'inline-flex'; tabOrders.firstChild.textContent = 'Orders & Decrees Desk '; }
+        if (tabCases) { tabCases.style.display = 'inline-flex'; tabCases.firstChild.textContent = 'Court Matters (Reference) '; }
+        if (tabDocs) { tabDocs.style.display = 'inline-flex'; tabDocs.firstChild.textContent = 'Case Pleadings '; }
+    } else if (isAdvocate) {
+        if (tabCases) { tabCases.style.display = 'inline-flex'; tabCases.firstChild.textContent = 'My Client Retainers '; }
+        if (tabHearings) { tabHearings.style.display = 'inline-flex'; tabHearings.firstChild.textContent = 'Court Appearances '; }
+        if (tabDocs) { tabDocs.style.display = 'inline-flex'; tabDocs.firstChild.textContent = 'Pleadings & Documents '; }
+        if (tabVak) { tabVak.style.display = 'inline-flex'; tabVak.firstChild.textContent = 'Vakalatnama Authorizations '; }
+    } else if (isLitigant) {
+        if (tabCases) { tabCases.style.display = 'inline-flex'; tabCases.firstChild.textContent = 'My Court Matters '; }
+        if (tabHearings) { tabHearings.style.display = 'inline-flex'; tabHearings.firstChild.textContent = 'Trial Hearing Dates '; }
+        if (tabOrders) { tabOrders.style.display = 'inline-flex'; tabOrders.firstChild.textContent = 'Certified Decrees '; }
+    } else if (isAdmin) {
+        if (tabCases) { tabCases.style.display = 'inline-flex'; tabCases.firstChild.textContent = 'Master Cases Ledger '; }
+        if (tabHearings) { tabHearings.style.display = 'inline-flex'; tabHearings.firstChild.textContent = 'Hearing Calendars '; }
+        if (tabOrders) { tabOrders.style.display = 'inline-flex'; tabOrders.firstChild.textContent = 'Judicial Decrees '; }
+        if (tabWitnesses) { tabWitnesses.style.display = 'inline-flex'; tabWitnesses.firstChild.textContent = 'Witnesses & Summons '; }
+        if (tabDocs) { tabDocs.style.display = 'inline-flex'; tabDocs.firstChild.textContent = 'All Documents '; }
+        if (tabVak) { tabVak.style.display = 'inline-flex'; tabVak.firstChild.textContent = 'All Vakalatnamas '; }
+        if (tabAdmin) { tabAdmin.style.display = 'inline-flex'; tabAdmin.firstChild.textContent = 'User Accounts (Admin) '; }
+        if (tabAudit) { tabAudit.style.display = 'inline-flex'; tabAudit.firstChild.textContent = '18 BCNF Database Audit '; }
     }
 
-    // RBAC: Scope Banner (for Litigant & Advocate)
+    // Role Scope Explainer Banner
     const banner = document.getElementById('roleScopeBanner');
     const bannerMsg = document.getElementById('roleScopeMessage');
     if (banner && bannerMsg) {
-        if (currentUser.user_role === 'Litigant') {
-            banner.style.display = 'flex';
-            bannerMsg.innerText = `Litigant View (${currentUser.name}): Displaying exclusively legal disputes where you are a named party.`;
-        } else if (currentUser.user_role === 'Advocate') {
-            banner.style.display = 'flex';
-            bannerMsg.innerText = `Counsel View (${currentUser.name}): Displaying active matters assigned to your legal practice.`;
-        } else if (currentUser.user_role === 'Judge') {
-            banner.style.display = 'flex';
-            bannerMsg.innerText = `Bench Docket (${currentUser.name}): Presiding Judicial View. Authorized to pronounce and publish final orders.`;
-        } else {
-            banner.style.display = 'none';
+        banner.style.display = 'flex';
+        if (isClerk) {
+            bannerMsg.innerHTML = `<strong>Registry Operations Mode (Clerk #${currentUser.user_id}):</strong> Authorized to file new case plaints, schedule daily cause lists, enroll witnesses, and update case progress metadata.`;
+        } else if (isJudge) {
+            bannerMsg.innerHTML = `<strong>Judicial Bench Authority (Hon'ble Judge #${currentUser.user_id}):</strong> Presiding over court trials. Exclusively authorized to record confidential Bench Notes and Sign &amp; Publish judicial decrees.`;
+        } else if (isAdvocate) {
+            bannerMsg.innerHTML = `<strong>Counsel Retainer Workspace (Advocate #${currentUser.user_id}):</strong> Client privilege filter active. Displaying exclusively cases where you are on record as Lead or Associate Counsel.`;
+        } else if (isLitigant) {
+            bannerMsg.innerHTML = `<strong>Citizen Self-Service Portal (Litigant #${currentUser.user_id}):</strong> Transparency access. Viewing exclusively your personal dispute dockets, trial dates, and certified court decrees. (Read-Only)`;
+        } else if (isAdmin) {
+            bannerMsg.innerHTML = `<strong>Supreme System Supervision (Administrator #${currentUser.user_id}):</strong> Unrestricted audit access across all 18 BCNF tables, triggers, user accounts, and court operations.`;
         }
     }
 }
@@ -108,7 +168,10 @@ function switchTab(targetId) {
     else if (targetId === 'tab-hearings') loadHearings();
     else if (targetId === 'tab-orders') loadOrders();
     else if (targetId === 'tab-witnesses') loadWitnesses();
+    else if (targetId === 'tab-documents') loadDocuments();
+    else if (targetId === 'tab-vakalatnama') loadVakalatnamas();
     else if (targetId === 'tab-admin') loadSystemUsers();
+    else if (targetId === 'tab-audit') loadSystemHealth();
 }
 
 function setupEventListeners() {
@@ -138,11 +201,24 @@ function setupEventListeners() {
     // Witness Filter
     document.getElementById('witnessSearchInput').addEventListener('input', debounce(loadWitnesses, 250));
 
+    // Document Filters
+    const docSearch = document.getElementById('docSearchInput');
+    if (docSearch) docSearch.addEventListener('input', debounce(loadDocuments, 250));
+    const docFilter = document.getElementById('docFilterType');
+    if (docFilter) docFilter.addEventListener('change', loadDocuments);
+
     // Form Submissions
     document.getElementById('createCaseForm').addEventListener('submit', handleCreateCase);
     document.getElementById('updateCaseForm').addEventListener('submit', handleUpdateCase);
     document.getElementById('btnConfirmDelete').addEventListener('click', handleConfirmDelete);
     document.getElementById('createWitnessForm').addEventListener('submit', handleCreateWitness);
+
+    // Judge Bench Form & Document Upload Form
+    const benchForm = document.getElementById('judgeBenchForm');
+    if (benchForm) benchForm.addEventListener('submit', handleJudgeBenchSubmit);
+
+    const docForm = document.getElementById('uploadDocForm');
+    if (docForm) docForm.addEventListener('submit', handleUploadDocSubmit);
 
     // Drawer edit button
     document.getElementById('btnDrawerEdit').addEventListener('click', () => {
@@ -167,15 +243,18 @@ async function loginPresetUser(userId, expectedRole) {
         if (!json.success) throw new Error(json.error);
 
         currentUser = json.user;
-        localStorage.setItem('court_active_user', JSON.stringify(currentUser));
+        sessionStorage.setItem('court_active_user', JSON.stringify(currentUser));
         applyUserRoleUI();
         closeModal('switchUserModal');
         showToast(`Active session switched to ${currentUser.name} (${currentUser.user_role})`, 'success');
 
-        // Reset to cases tab & reload with new role filters
+        // Auto-switch to the primary tab for the selected role
         currentPage = 1;
-        switchTab('tab-cases');
-        loadCases();
+        if (currentUser.user_role === 'Judge') {
+            switchTab('tab-hearings');
+        } else {
+            switchTab('tab-cases');
+        }
         loadDashboardStats();
     } catch (err) {
         showToast(err.message, 'danger');
@@ -198,14 +277,17 @@ async function handleCustomLogin() {
         if (!json.success) throw new Error(json.error);
 
         currentUser = json.user;
-        localStorage.setItem('court_active_user', JSON.stringify(currentUser));
+        sessionStorage.setItem('court_active_user', JSON.stringify(currentUser));
         applyUserRoleUI();
         closeModal('switchUserModal');
         showToast(`Session authenticated: ${currentUser.name} (${currentUser.user_role})`, 'success');
 
         currentPage = 1;
-        switchTab('tab-cases');
-        loadCases();
+        if (currentUser.user_role === 'Judge') {
+            switchTab('tab-hearings');
+        } else {
+            switchTab('tab-cases');
+        }
         loadDashboardStats();
     } catch (err) {
         showToast(err.message, 'danger');
@@ -221,25 +303,35 @@ function getAuthHeaders() {
 }
 
 // ==============================================================
-// 3. DASHBOARD SUMMARY CARDS & BADGE COUNTS
+// 3. DASHBOARD SUMMARY CARDS (Dynamic & Role-Specific)
 // ==============================================================
 async function loadDashboardStats() {
     try {
         const res = await fetch('/api/stats', { headers: getAuthHeaders() });
         const json = await res.json();
-        if (json.success && json.stats) {
-            const s = json.stats;
-            document.getElementById('kpiTotalCases').innerText = Number(s.total_cases).toLocaleString();
-            document.getElementById('kpiPendingCases').innerText = Number(s.pending_cases).toLocaleString();
-            document.getElementById('kpiUrgentCases').innerText = Number(s.urgent_cases).toLocaleString();
-            document.getElementById('kpiDisposedCases').innerText = Number(s.disposed_cases).toLocaleString();
-            document.getElementById('kpiTotalHearings').innerText = Number(s.total_hearings).toLocaleString();
-            document.getElementById('kpiPublishedOrders').innerText = Number(s.published_orders).toLocaleString();
+        if (json.success) {
+            const container = document.getElementById('kpiCardsRow');
+            if (json.cards && container) {
+                container.innerHTML = json.cards.map(c => `
+                    <div class="card" style="border-left: 3px solid ${c.color || 'var(--primary)'};">
+                        <span class="card-label">${escapeHtml(c.label)}</span>
+                        <span class="card-num" style="color:${c.color || 'var(--primary)'};">${Number(c.value || 0).toLocaleString()}</span>
+                        <span class="card-caption">${escapeHtml(c.sub)}</span>
+                    </div>
+                `).join('');
+            }
 
-            document.getElementById('badgeCases').innerText = s.total_cases;
-            document.getElementById('badgeHearings').innerText = s.total_hearings;
-            document.getElementById('badgeOrders').innerText = s.total_orders;
-            document.getElementById('badgeWitnesses').innerText = s.total_witnesses;
+            if (json.stats) {
+                const s = json.stats;
+                const bCases = document.getElementById('badgeCases');
+                const bHearings = document.getElementById('badgeHearings');
+                const bOrders = document.getElementById('badgeOrders');
+                const bWitnesses = document.getElementById('badgeWitnesses');
+                if (bCases) bCases.innerText = s.total_cases || '--';
+                if (bHearings) bHearings.innerText = s.total_hearings || '--';
+                if (bOrders) bOrders.innerText = s.published_orders || '--';
+                if (bWitnesses) bWitnesses.innerText = s.total_witnesses || '--';
+            }
         }
     } catch (err) {
         console.warn('Could not refresh summary cards:', err);
@@ -767,7 +859,7 @@ async function loadHearings() {
         renderHearingsTable(json.data);
         countLabel.innerText = `Showing ${json.rowCount} hearings`;
     } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
         countLabel.innerText = 'Failed to load hearings';
     }
 }
@@ -777,9 +869,11 @@ function renderHearingsTable(hearings) {
     tbody.innerHTML = '';
 
     if (!hearings || hearings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="table-loading">No hearings match the selected criteria.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="table-loading">No hearings match the selected criteria.</td></tr>';
         return;
     }
+
+    const isJudge = ['Judge', 'Court Administrator'].includes(currentUser.user_role);
 
     let lastDate = null;
     hearings.forEach(h => {
@@ -789,7 +883,7 @@ function renderHearingsTable(hearings) {
             const groupHeader = document.createElement('tr');
             groupHeader.style.backgroundColor = 'var(--header-bg)';
             groupHeader.innerHTML = `
-                <td colspan="7" style="font-weight:700; color:var(--primary); padding:8px 16px; border-bottom:1px solid var(--border);">
+                <td colspan="8" style="font-weight:700; color:var(--primary); padding:8px 16px; border-bottom:1px solid var(--border);">
                     Hearing Session Date: ${dateStr}
                 </td>
             `;
@@ -798,6 +892,13 @@ function renderHearingsTable(hearings) {
         }
 
         const tr = document.createElement('tr');
+        let actionBtn = '<span class="text-muted" style="font-size:12px;">Hearing Record</span>';
+        if (isJudge) {
+            const safeNote = (h.bench_note || '').replace(/'/g, "\\'");
+            const safeOutcome = (h.outcome || '').replace(/'/g, "\\'");
+            actionBtn = `<button class="btn btn-sm btn-outline" onclick="openJudgeBenchModal('${escapeHtml(h.cnr)}', ${h.hearing_seq_no}, '${safeOutcome}', '${safeNote}')">Bench Note / Outcome</button>`;
+        }
+
         tr.innerHTML = `
             <td>
                 <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(h.cnr)}')">
@@ -810,9 +911,55 @@ function renderHearingsTable(hearings) {
             <td style="color:var(--text-muted); max-width:280px;">${h.bench_note ? escapeHtml(h.bench_note) : '—'}</td>
             <td>Judge #${h.judge_id || 'N/A'}</td>
             <td>${h.causelist_id ? `List #${h.causelist_id}` : '—'}</td>
+            <td class="text-right">${actionBtn}</td>
         `;
         tbody.appendChild(tr);
     });
+}
+
+function openJudgeBenchModal(cnr, seq, outcome, benchNote) {
+    document.getElementById('bench_hearing_cnr').value = cnr;
+    document.getElementById('bench_hearing_seq').value = seq;
+    document.getElementById('bench_display_cnr').innerText = `${cnr} (Hearing #${seq})`;
+    document.getElementById('bench_outcome').value = outcome || 'Arguments Heard';
+    document.getElementById('bench_note').value = benchNote || '';
+    openModal('judgeBenchModal');
+}
+
+async function handleJudgeBenchSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSaveBenchRecord');
+    btn.disabled = true;
+    btn.innerText = 'Saving Record...';
+
+    const cnr = document.getElementById('bench_hearing_cnr').value;
+    const seq = document.getElementById('bench_hearing_seq').value;
+    const outcome = document.getElementById('bench_outcome').value;
+    const bench_note = document.getElementById('bench_note').value;
+
+    try {
+        const res = await fetch(`/api/hearings/${encodeURIComponent(cnr)}/${seq}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({ outcome, bench_note })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        showToast(`Hearing #${seq} record updated by judicial officer.`, 'success');
+        closeModal('judgeBenchModal');
+        loadHearings();
+        loadDashboardStats();
+        if (currentDossierCnr === cnr) viewDossier(cnr);
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Save Bench Record';
+    }
 }
 
 // ==============================================================
@@ -1036,7 +1183,191 @@ async function loadSystemUsers() {
 }
 
 // ==============================================================
-// 10. MODAL & TOAST HELPERS
+// 10. TAB 6: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
+// ==============================================================
+async function loadDocuments() {
+    const tbody = document.getElementById('docTableBody');
+    const countLabel = document.getElementById('docShowingText');
+    const search = document.getElementById('docSearchInput') ? document.getElementById('docSearchInput').value.trim() : '';
+    const type = document.getElementById('docFilterType') ? document.getElementById('docFilterType').value : 'ALL';
+
+    if (countLabel) countLabel.innerText = 'Loading documents...';
+
+    try {
+        const params = new URLSearchParams();
+        if (search) params.append('cnr', search);
+        if (type && type !== 'ALL') params.append('type', type);
+        params.append('limit', '100');
+
+        const res = await fetch(`/api/documents?${params.toString()}`, { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        renderDocumentsTable(json.data);
+        if (countLabel) countLabel.innerText = `Showing ${json.rowCount} documents`;
+    } catch (err) {
+        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
+        if (countLabel) countLabel.innerText = 'Failed to load documents';
+    }
+}
+
+function renderDocumentsTable(docs) {
+    const tbody = document.getElementById('docTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!docs || docs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No filed legal documents match criteria.</td></tr>';
+        return;
+    }
+
+    docs.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>
+                <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(d.cnr)}')">
+                    ${escapeHtml(d.cnr)}
+                </a>
+            </td>
+            <td>Doc #${d.doc_seq_no}</td>
+            <td><strong>${escapeHtml(d.document_type)}</strong></td>
+            <td>${formatDate(d.upload_date)}</td>
+            <td>${d.advocate_name ? escapeHtml(d.advocate_name) : 'Counsel'} <span class="font-mono text-muted">(#${d.advocate_id})</span></td>
+            <td class="text-right">
+                <span class="status-badge badge-published">Docket Verified</span>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function openUploadDocModal(cnr = '') {
+    const cnrInput = document.getElementById('doc_cnr');
+    const advInput = document.getElementById('doc_adv_id');
+    const typeSelect = document.getElementById('doc_type');
+
+    if (cnrInput) cnrInput.value = cnr || '';
+    if (advInput) advInput.value = currentUser.user_id ? `${currentUser.name} (#${currentUser.user_id})` : 'Advocate #1';
+    if (typeSelect) typeSelect.value = 'Petition';
+
+    openModal('uploadDocModal');
+}
+
+async function handleUploadDocSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitDoc');
+    btn.disabled = true;
+    btn.innerText = 'Submitting Pleading...';
+
+    const payload = {
+        cnr: document.getElementById('doc_cnr').value.trim(),
+        document_type: document.getElementById('doc_type').value,
+        advocate_id: currentUser.user_id || 1
+    };
+
+    try {
+        const res = await fetch('/api/documents', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        showToast(`${payload.document_type} filed successfully on record.`, 'success');
+        closeModal('uploadDocModal');
+        loadDocuments();
+        loadDashboardStats();
+        if (currentDossierCnr === payload.cnr) viewDossier(payload.cnr);
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Submit Document';
+    }
+}
+
+// ==============================================================
+// 11. TAB 7: VAKALATNAMA AUTHORIZATIONS (R16 - Digital Powers of Attorney)
+// ==============================================================
+async function loadVakalatnamas() {
+    const tbody = document.getElementById('vakalatnamaTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Querying vakalatnama digital powers of attorney (R16)...</td></tr>';
+
+    try {
+        const res = await fetch('/api/vakalatnamas', { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        tbody.innerHTML = '';
+        if (!json.data || json.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No Vakalatnama authorizations on file for active account.</td></tr>';
+            return;
+        }
+
+        json.data.forEach(v => {
+            const tr = document.createElement('tr');
+            const eSignBadge = v.e_signature_flag
+                ? '<span class="status-badge badge-published">Digitally Signed</span>'
+                : '<span class="status-badge badge-draft">Physical Execution</span>';
+
+            tr.innerHTML = `
+                <td class="font-mono">#${v.auth_id}</td>
+                <td>${formatDate(v.signed_date)}</td>
+                <td>${eSignBadge}</td>
+                <td>
+                    <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(v.cnr)}')">
+                        ${escapeHtml(v.cnr)}
+                    </a>
+                </td>
+                <td>${v.litigant_name ? escapeHtml(v.litigant_name) : 'Litigant'} <span class="font-mono text-muted">(#${v.litigant_id})</span></td>
+                <td>${v.advocate_name ? escapeHtml(v.advocate_name) : 'Advocate'} <span class="font-mono text-muted">(#${v.advocate_id})</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
+        showToast(err.message, 'danger');
+    }
+}
+
+// ==============================================================
+// 12. TAB 8: DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+// ==============================================================
+async function loadSystemHealth() {
+    const tbody = document.getElementById('auditTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Auditing 18 BCNF relations and row counts from live Supabase cluster...</td></tr>';
+
+    try {
+        const res = await fetch('/api/system/health', { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        tbody.innerHTML = '';
+        json.tables.forEach(t => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="font-mono" style="font-weight:700; color:var(--primary);">${escapeHtml(t.relation)}</td>
+                <td><code style="font-size:13px; font-weight:600;">${escapeHtml(t.table_name)}</code></td>
+                <td>${escapeHtml(t.description)}</td>
+                <td class="font-mono"><strong>${Number(t.row_count).toLocaleString()}</strong> tuples</td>
+                <td><span class="status-badge badge-published">Normalized (BCNF)</span></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="5" class="table-loading text-danger">Audit Error: ${escapeHtml(err.message)}</td></tr>`;
+        showToast(err.message, 'danger');
+    }
+}
+
+// ==============================================================
+// 13. MODAL & TOAST HELPERS
 // ==============================================================
 function openModal(id) {
     const el = document.getElementById(id);

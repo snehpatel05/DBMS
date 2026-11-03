@@ -83,23 +83,114 @@ app.get('/api/users', async (req, res) => {
 });
 
 // ==============================================================
-// 1. DASHBOARD & SYSTEM METRICS
+// 1. DASHBOARD & SYSTEM METRICS (Role-Tailored KPIs)
 // ==============================================================
 app.get('/api/stats', async (req, res) => {
     try {
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+
+        // Judicial Bench View (Judge)
+        if (userRole === 'Judge' && userId) {
+            const sql = `
+                SELECT 
+                    (SELECT COUNT(*) FROM hearing WHERE judge_id = $1) AS listed_hearings,
+                    (SELECT COUNT(*) FROM court_order WHERE judge_id = $1 AND published_date IS NULL) AS draft_orders,
+                    (SELECT COUNT(*) FROM court_order WHERE judge_id = $1 AND published_date IS NOT NULL) AS published_decrees,
+                    (SELECT COUNT(*) FROM court_case WHERE case_status = 'Disposed') AS disposed_matters,
+                    (SELECT COUNT(*) FROM court_case WHERE statutory_urgency = 'Urgent') AS urgent_track;
+            `;
+            const r = await query(sql, [userId]);
+            const s = r.rows[0];
+            return res.json({
+                success: true,
+                role: 'Judge',
+                cards: [
+                    { label: 'Assigned Bench Hearings', value: s.listed_hearings, sub: 'Calendar sessions before your bench', color: '#1F4D3F' },
+                    { label: 'Draft Orders Reserved', value: s.draft_orders, sub: 'Awaiting signature & decree publication', color: '#B7791F' },
+                    { label: 'Published Judgments', value: s.published_decrees, sub: 'Legally signed judicial decrees', color: '#10B981' },
+                    { label: 'Disposed Cases', value: s.disposed_matters, sub: 'Court matters concluded with final order', color: '#667085' },
+                    { label: 'Urgent Track Matters', value: s.urgent_track, sub: 'Statutory expedited hearings', color: '#B42318' }
+                ]
+            });
+        }
+
+        // Legal Counsel View (Advocate)
+        if (userRole === 'Advocate' && userId) {
+            const sql = `
+                SELECT 
+                    (SELECT COUNT(*) FROM case_advocate WHERE advocate_id = $1) AS retainer_cases,
+                    (SELECT COUNT(*) FROM case_advocate WHERE advocate_id = $1 AND case_role = 'Lead') AS lead_briefs,
+                    (SELECT COUNT(*) FROM hearing WHERE cnr IN (SELECT cnr FROM case_advocate WHERE advocate_id = $1)) AS appearances,
+                    (SELECT COUNT(*) FROM document WHERE advocate_id = $1) AS docs_filed,
+                    (SELECT COUNT(*) FROM vakalatnama WHERE advocate_id = $1) AS vakalatnamas;
+            `;
+            const r = await query(sql, [userId]);
+            const s = r.rows[0];
+            return res.json({
+                success: true,
+                role: 'Advocate',
+                cards: [
+                    { label: 'My Client Retainers', value: s.retainer_cases, sub: 'Active disputes representing clients', color: '#1D5FA8' },
+                    { label: 'Lead Counsel Briefs', value: s.lead_briefs, sub: 'Senior advocate authority', color: '#1F4D3F' },
+                    { label: 'Court Appearances', value: s.appearances, sub: 'Scheduled bench trial sessions', color: '#B7791F' },
+                    { label: 'Pleadings & Briefs Filed', value: s.docs_filed, sub: 'Petitions, affidavits & exhibits', color: '#6941C6' },
+                    { label: 'Vakalatnama Powers', value: s.vakalatnamas, sub: 'Digital power of attorney on record', color: '#10B981' }
+                ]
+            });
+        }
+
+        // Citizen Transparency View (Litigant)
+        if (userRole === 'Litigant' && userId) {
+            const sql = `
+                SELECT 
+                    (SELECT COUNT(*) FROM case_party WHERE litigant_id = $1) AS my_matters,
+                    (SELECT party_role FROM case_party WHERE litigant_id = $1 LIMIT 1) AS my_role,
+                    (SELECT COUNT(*) FROM hearing WHERE cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $1)) AS hearings,
+                    (SELECT COUNT(*) FROM court_order WHERE published_date IS NOT NULL AND cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $1)) AS decrees,
+                    (SELECT COUNT(*) FROM summons WHERE cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $1)) AS summons;
+            `;
+            const r = await query(sql, [userId]);
+            const s = r.rows[0];
+            return res.json({
+                success: true,
+                role: 'Litigant',
+                cards: [
+                    { label: 'My Court Matters', value: s.my_matters, sub: `Active dispute matters on record (${s.my_role || 'Party'})`, color: '#667085' },
+                    { label: 'Scheduled Trial Dates', value: s.hearings, sub: 'Appearances before the judicial bench', color: '#1D5FA8' },
+                    { label: 'Certified Court Decrees', value: s.decrees, sub: 'Official published orders in matter', color: '#10B981' },
+                    { label: 'Summons Issued', value: s.summons, sub: 'Witness summons dispatched for case', color: '#B7791F' }
+                ]
+            });
+        }
+
+        // Registry & Supervisory View (Clerk & Court Administrator)
         const statsQuery = `
             SELECT 
                 (SELECT COUNT(*) FROM court_case) AS total_cases,
                 (SELECT COUNT(*) FROM court_case WHERE case_status = 'Pending') AS pending_cases,
                 (SELECT COUNT(*) FROM court_case WHERE statutory_urgency = 'Urgent') AS urgent_cases,
                 (SELECT COUNT(*) FROM court_case WHERE case_status = 'Disposed') AS disposed_cases,
+                (SELECT COUNT(*) FROM cause_list) AS total_causelists,
+                (SELECT COUNT(*) FROM witness) AS total_witnesses,
                 (SELECT COUNT(*) FROM hearing) AS total_hearings,
-                (SELECT COUNT(*) FROM court_order) AS total_orders,
-                (SELECT COUNT(*) FROM court_order WHERE published_date IS NOT NULL) AS published_orders,
-                (SELECT COUNT(*) FROM witness) AS total_witnesses;
+                (SELECT COUNT(*) FROM court_order WHERE published_date IS NOT NULL) AS published_orders;
         `;
         const result = await query(statsQuery);
-        res.json({ success: true, stats: result.rows[0] });
+        const s = result.rows[0];
+        res.json({
+            success: true,
+            role: userRole || 'Clerk',
+            cards: [
+                { label: 'Total Registered Cases', value: s.total_cases, sub: 'Active registry dockets', color: '#1F4D3F' },
+                { label: 'Pending Scrutiny / Trial', value: s.pending_cases, sub: 'Awaiting judicial disposal', color: '#B7791F' },
+                { label: 'Urgent Track Filings', value: s.urgent_cases, sub: 'Statutory priority proceedings', color: '#B42318' },
+                { label: 'Disposed Matters', value: s.disposed_cases, sub: 'Decrees pronounced & finalized', color: '#667085' },
+                { label: 'Cause Lists Issued', value: s.total_causelists, sub: 'Daily court roster calendars', color: '#1D5FA8' },
+                { label: 'Witness Summons Active', value: s.total_witnesses, sub: 'Enrolled witness repository', color: '#6941C6' }
+            ],
+            stats: s
+        });
     } catch (err) {
         console.error('[STATS ERROR]', err.message);
         res.status(500).json({ success: false, error: err.message });
@@ -379,8 +470,22 @@ app.delete('/api/cases/:cnr', async (req, res) => {
 app.get('/api/hearings', async (req, res) => {
     try {
         const { outcome, search, limit } = req.query;
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
         let conditions = [];
         let params = [];
+
+        // Role-Based Filtering
+        if (userRole === 'Judge' && userId) {
+            params.push(userId);
+            conditions.push(`judge_id = $${params.length}`);
+        } else if (userRole === 'Advocate' && userId) {
+            params.push(userId);
+            conditions.push(`cnr IN (SELECT cnr FROM case_advocate WHERE advocate_id = $${params.length})`);
+        } else if (userRole === 'Litigant' && userId) {
+            params.push(userId);
+            conditions.push(`cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $${params.length})`);
+        }
 
         if (outcome && outcome !== 'ALL') {
             params.push(outcome);
@@ -392,7 +497,7 @@ app.get('/api/hearings', async (req, res) => {
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const rowLimit = parseInt(limit || '50', 10);
+        const rowLimit = parseInt(limit || '100', 10);
         params.push(rowLimit);
 
         const sql = `
@@ -403,12 +508,54 @@ app.get('/api/hearings', async (req, res) => {
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ v_hearing_with_date] Fetched ${result.rowCount} records`);
+        console.log(`[READ v_hearing_with_date] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
 
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
         console.error('[HEARINGS ERROR]', err.message);
         res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// JUDGE BENCH NOTE & OUTCOME RECORDER (R11 Judicial Authority)
+app.put('/api/hearings/:cnr/:seq', async (req, res) => {
+    const userRole = req.headers['x-user-role'];
+    if (userRole && !['Judge', 'Court Administrator'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied: Judicial recording of bench notes and trial outcomes is restricted to Presiding Judges.' });
+    }
+
+    const { cnr, seq } = req.params;
+    const { outcome, bench_note } = req.body;
+
+    try {
+        const sql = `
+            UPDATE hearing
+            SET outcome = COALESCE($1, outcome),
+                bench_note = COALESCE($2, bench_note)
+            WHERE cnr = $3 AND hearing_seq_no = $4
+            RETURNING *;
+        `;
+        const result = await query(sql, [
+            outcome || null,
+            bench_note !== undefined ? bench_note.trim() : null,
+            cnr,
+            parseInt(seq, 10)
+        ]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, error: `Hearing sequence #${seq} for case ${cnr} not found.` });
+        }
+
+        console.log(`[BENCH NOTE] Judge updated hearing ${cnr} #${seq}`);
+        res.json({
+            success: true,
+            rowCount: result.rowCount,
+            message: 'Hearing outcome and judicial bench note recorded on official docket.',
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[BENCH NOTE ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
     }
 });
 
@@ -418,8 +565,22 @@ app.get('/api/hearings', async (req, res) => {
 app.get('/api/orders', async (req, res) => {
     try {
         const { type, publish_status, search, limit } = req.query;
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
         let conditions = [];
         let params = [];
+
+        // Role-Based Filtering
+        if (userRole === 'Judge' && userId) {
+            params.push(userId);
+            conditions.push(`judge_id = $${params.length}`);
+        } else if (userRole === 'Advocate' && userId) {
+            params.push(userId);
+            conditions.push(`cnr IN (SELECT cnr FROM case_advocate WHERE advocate_id = $${params.length})`);
+        } else if (userRole === 'Litigant' && userId) {
+            params.push(userId);
+            conditions.push(`cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $${params.length})`);
+        }
 
         if (type && type !== 'ALL') {
             params.push(type);
@@ -447,7 +608,7 @@ app.get('/api/orders', async (req, res) => {
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ v_order_with_status] Fetched ${result.rowCount} records`);
+        console.log(`[READ v_order_with_status] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
 
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
@@ -545,6 +706,205 @@ app.post('/api/witnesses', async (req, res) => {
     } catch (err) {
         console.error('[CREATE WITNESS ERROR]', err.message);
         res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 6. TABLE 5: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
+// ==============================================================
+app.get('/api/documents', async (req, res) => {
+    try {
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { cnr, type, limit } = req.query;
+        let conditions = [];
+        let params = [];
+
+        if (userRole === 'Advocate' && userId) {
+            params.push(userId);
+            conditions.push(`d.advocate_id = $${params.length}`);
+        } else if (userRole === 'Litigant' && userId) {
+            params.push(userId);
+            conditions.push(`d.cnr IN (SELECT cnr FROM case_party WHERE litigant_id = $${params.length})`);
+        }
+
+        if (cnr) {
+            params.push(`%${cnr.trim()}%`);
+            conditions.push(`d.cnr ILIKE $${params.length}`);
+        }
+        if (type && type !== 'ALL') {
+            params.push(type);
+            conditions.push(`d.document_type = $${params.length}`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const rowLimit = parseInt(limit || '100', 10);
+        params.push(rowLimit);
+
+        const sql = `
+            SELECT d.cnr, d.doc_seq_no, d.document_type, d.upload_date, d.advocate_id,
+                   u.name AS advocate_name
+            FROM document d
+            LEFT JOIN system_users u ON d.advocate_id = u.user_id
+            ${whereClause}
+            ORDER BY d.upload_date DESC, d.doc_seq_no DESC
+            LIMIT $${params.length};
+        `;
+        const result = await query(sql, params);
+        console.log(`[READ document] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
+
+        res.json({ success: true, rowCount: result.rowCount, data: result.rows });
+    } catch (err) {
+        console.error('[DOCUMENTS ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/documents', async (req, res) => {
+    const userRole = req.headers['x-user-role'];
+    const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+    if (userRole && !['Advocate', 'Clerk', 'Court Administrator'].includes(userRole)) {
+        return res.status(403).json({ success: false, error: 'Access denied: Only Advocates and Registry staff may file legal pleadings.' });
+    }
+
+    const { cnr, document_type, advocate_id } = req.body;
+    if (!cnr || !document_type) {
+        return res.status(400).json({ success: false, error: 'CNR and Document Type are required.' });
+    }
+
+    const advId = advocate_id ? parseInt(advocate_id, 10) : (userId || 1);
+
+    try {
+        const seqRes = await query('SELECT COALESCE(MAX(doc_seq_no), 0) + 1 AS next_seq FROM document WHERE cnr = $1', [cnr]);
+        const nextSeq = seqRes.rows[0].next_seq;
+
+        const sql = `
+            INSERT INTO document (cnr, doc_seq_no, document_type, upload_date, advocate_id)
+            VALUES ($1, $2, $3, CURRENT_DATE, $4)
+            RETURNING *;
+        `;
+        const result = await query(sql, [cnr, nextSeq, document_type, advId]);
+        console.log(`[CREATE document] Filed ${document_type} on case ${cnr}`);
+
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `${document_type} filed successfully on record.`,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[CREATE DOCUMENT ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 7. TABLE 6: VAKALATNAMA AUTHORIZATIONS (R16)
+// ==============================================================
+app.get('/api/vakalatnamas', async (req, res) => {
+    try {
+        const userRole = req.headers['x-user-role'];
+        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        let conditions = [];
+        let params = [];
+
+        if (userRole === 'Advocate' && userId) {
+            params.push(userId);
+            conditions.push(`v.advocate_id = $${params.length}`);
+        } else if (userRole === 'Litigant' && userId) {
+            params.push(userId);
+            conditions.push(`v.litigant_id = $${params.length}`);
+        }
+
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const sql = `
+            SELECT v.auth_id, v.signed_date, v.e_signature_flag, v.cnr,
+                   v.litigant_id, ul.name AS litigant_name,
+                   v.advocate_id, ua.name AS advocate_name
+            FROM vakalatnama v
+            LEFT JOIN system_users ul ON v.litigant_id = ul.user_id
+            LEFT JOIN system_users ua ON v.advocate_id = ua.user_id
+            ${whereClause}
+            ORDER BY v.auth_id ASC
+            LIMIT 100;
+        `;
+        const result = await query(sql, params);
+        res.json({ success: true, rowCount: result.rowCount, data: result.rows });
+    } catch (err) {
+        console.error('[VAKALATNAMA ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 8. TABLE 7: ADVOCATE ASSIGNMENT (R9 - Lead Assigner Trigger)
+// ==============================================================
+app.post('/api/case-advocates', async (req, res) => {
+    const { cnr, advocate_id, case_role, assigned_by } = req.body;
+    if (!cnr || !advocate_id) {
+        return res.status(400).json({ success: false, error: 'CNR and Advocate ID are required.' });
+    }
+
+    try {
+        const sql = `
+            INSERT INTO case_advocate (cnr, advocate_id, case_role, assigned_date, assigned_by)
+            VALUES ($1, $2, $3, CURRENT_DATE, $4)
+            RETURNING *;
+        `;
+        const result = await query(sql, [
+            cnr,
+            parseInt(advocate_id, 10),
+            case_role || 'Associate',
+            assigned_by ? parseInt(assigned_by, 10) : null
+        ]);
+
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: 'Advocate counsel successfully retained on docket.',
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[ASSIGN ADVOCATE ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 9. DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+// ==============================================================
+app.get('/api/system/health', async (req, res) => {
+    const role = req.headers['x-user-role'];
+    if (role !== 'Court Administrator') {
+        return res.status(403).json({ success: false, error: 'Access denied: System audit is reserved for Court Administrators.' });
+    }
+
+    try {
+        const sql = `
+            SELECT 'system_users' AS table_name, 'R1' AS relation, 'User Accounts Master' AS description, COUNT(*) AS row_count FROM system_users UNION ALL
+            SELECT 'advocate' AS table_name, 'R2' AS relation, 'Bar Council Advocates', COUNT(*) AS row_count FROM advocate UNION ALL
+            SELECT 'litigant' AS table_name, 'R3' AS relation, 'Registered Litigants', COUNT(*) AS row_count FROM litigant UNION ALL
+            SELECT 'judge' AS table_name, 'R4' AS relation, 'Judicial Officers', COUNT(*) AS row_count FROM judge UNION ALL
+            SELECT 'clerk' AS table_name, 'R5' AS relation, 'Registry Clerks', COUNT(*) AS row_count FROM clerk UNION ALL
+            SELECT 'court_administrator' AS table_name, 'R6' AS relation, 'Supervisors', COUNT(*) AS row_count FROM court_administrator UNION ALL
+            SELECT 'court_case' AS table_name, 'R7' AS relation, 'Court Cases Ledger', COUNT(*) AS row_count FROM court_case UNION ALL
+            SELECT 'case_party' AS table_name, 'R8' AS relation, 'Case Litigant Parties', COUNT(*) AS row_count FROM case_party UNION ALL
+            SELECT 'case_advocate' AS table_name, 'R9' AS relation, 'Retained Advocates', COUNT(*) AS row_count FROM case_advocate UNION ALL
+            SELECT 'cause_list' AS table_name, 'R10' AS relation, 'Daily Cause Lists', COUNT(*) AS row_count FROM cause_list UNION ALL
+            SELECT 'hearing' AS table_name, 'R11' AS relation, 'Court Hearings', COUNT(*) AS row_count FROM hearing UNION ALL
+            SELECT 'witness' AS table_name, 'R12' AS relation, 'Summoned Witnesses', COUNT(*) AS row_count FROM witness UNION ALL
+            SELECT 'summons' AS table_name, 'R13' AS relation, 'Witness Summons', COUNT(*) AS row_count FROM summons UNION ALL
+            SELECT 'court_order' AS table_name, 'R14' AS relation, 'Judicial Decrees & Orders', COUNT(*) AS row_count FROM court_order UNION ALL
+            SELECT 'document' AS table_name, 'R15' AS relation, 'Legal Pleadings & Exhibits', COUNT(*) AS row_count FROM document UNION ALL
+            SELECT 'vakalatnama' AS table_name, 'R16' AS relation, 'Powers of Attorney', COUNT(*) AS row_count FROM vakalatnama UNION ALL
+            SELECT 'alert' AS table_name, 'R17' AS relation, 'System Notifications', COUNT(*) AS row_count FROM alert UNION ALL
+            SELECT 'alert_recipient' AS table_name, 'R18' AS relation, 'Alert Deliveries', COUNT(*) AS row_count FROM alert_recipient;
+        `;
+        const result = await query(sql);
+        res.json({ success: true, count: result.rowCount, tables: result.rows });
+    } catch (err) {
+        console.error('[AUDIT ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
     }
 });
 
