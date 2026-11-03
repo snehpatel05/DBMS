@@ -1,11 +1,9 @@
-# 🏛️ District Court Case Management System (Sessions Division)
+# 🏛️ District Court Case Management System
 ### MC212 Database Management Systems — Lab 11: Database Connectivity Project
 **Team Number:** Team 7  
 **Team Members:**  
 * **Patel Sneh Champakkumar** (`202503007`)  
 * **Trivedi Havish Ashishkumar** (`202503013`)  
-**Course Instructor:** Prof. Minal Bhise (`minal_bhise@dau.ac.in`)  
-**Teaching Assistants:** `202303010@dau.ac.in`, `202303016@dau.ac.in`  
 
 ---
 
