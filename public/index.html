@@ -34,6 +34,11 @@
                 </div>
             </div>
             <div class="header-right">
+                <!-- Notifications Bell Icon with Unread Counter -->
+                <button class="btn-icon-badge" id="btnAlertsBell" onclick="openModal('alertsModal')" title="View Notifications & Court Alerts">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    <span class="badge-counter" id="unreadAlertCount" style="display: none;">0</span>
+                </button>
                 <!-- Role-Based Active User Pill with Click to Switch -->
                 <div class="user-role-badge" id="btnUserSwitcher" onclick="openModal('switchUserModal')" title="Click to switch role or account">
                     <span class="user-avatar" id="headerAvatar">CK</span>
@@ -237,6 +242,8 @@
                     <div class="toolbar-right">
                         <span class="showing-count" id="hearingShowingText">Loading hearings...</span>
                         <button class="btn btn-secondary" onclick="loadHearings()">Refresh</button>
+                        <button class="btn btn-secondary" id="btnScheduleHearingToolbar" onclick="openModal('scheduleHearingModal')">+ Schedule Hearing</button>
+                        <button class="btn btn-primary" id="btnGenerateCauseListToolbar" onclick="openModal('generateCauseListModal')">Generate Cause List</button>
                     </div>
                 </div>
 
@@ -248,7 +255,7 @@
                                 <th>Hearing No.</th>
                                 <th>Scheduled Date</th>
                                 <th>Outcome</th>
-                                <th>Bench Minutes</th>
+                                <th id="thBenchNote">Judicial Bench Notes</th>
                                 <th>Presiding Judge</th>
                                 <th>Daily Cause List</th>
                                 <th class="text-right">Action</th>
@@ -289,6 +296,7 @@
                     <div class="toolbar-right">
                         <span class="showing-count" id="orderShowingText">Loading orders...</span>
                         <button class="btn btn-secondary" onclick="loadOrders()">Refresh</button>
+                        <button class="btn btn-primary" id="btnDraftOrderToolbar" onclick="openModal('draftOrderModal')">+ Draft New Order</button>
                     </div>
                 </div>
 
@@ -759,6 +767,9 @@
                             </select>
                         </div>
                     </div>
+                    <div id="upd_disposed_warning" class="alert-box-info mt-2" style="display:none; color:var(--status-urgent); border-left-color:var(--status-urgent);">
+                        <strong>Record Sealed:</strong> This case is Disposed by Final Judgment decree. Status and registry metadata are permanent and cannot be modified.
+                    </div>
                 </div>
 
                 <div class="modal-footer">
@@ -920,6 +931,169 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('uploadDocModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="btnSubmitDoc">Submit Document</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: NOTIFICATIONS & ALERTS (REQ-04, P1)
+         ============================================================== -->
+    <div class="modal-overlay" id="alertsModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Court Notifications &amp; Alerts</h2>
+                        <span class="modal-desc">Automated alerts for hearing reminders, published decrees, and pleadings</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('alertsModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <span class="text-muted" id="alertsSummaryText" style="font-size:13px;">Loading notifications...</span>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="markAllAlertsAsRead()">Mark all as read</button>
+                </div>
+                <div id="alertsContainer" style="max-height: 420px; overflow-y: auto;">
+                    <div class="table-loading">Loading alerts...</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('alertsModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: GENERATE DAILY CAUSE LIST (REQ-05, P1)
+         ============================================================== -->
+    <div class="modal-overlay" id="generateCauseListModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Generate Daily Cause List</h2>
+                        <span class="modal-desc">Statutory Priority Engine: Urgency &gt; Witness Summons &gt; Filing Age</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('generateCauseListModal')">&times;</button>
+            </div>
+            <form id="generateCauseListForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="cl_target_date">Cause List Roster Date <span class="required">*</span></label>
+                        <input type="date" id="cl_target_date" class="form-input" required />
+                        <span class="form-help">Calendar session date for district bench proceedings</span>
+                    </div>
+                    <div class="alert-box-info">
+                        <strong>Statutory Priority Order (SRS Section 3.2):</strong>
+                        <ul style="margin:6px 0 0 18px; font-size:13px; line-height:1.4;">
+                            <li><strong>Track 1:</strong> Statutory Urgency (Urgent &gt; Statutory &gt; Normal)</li>
+                            <li><strong>Track 2:</strong> Active Witness Presence (Cases with witness summons issued)</li>
+                            <li><strong>Track 3:</strong> Filing Age Tiebreaker (Oldest pending cases scheduled first)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('generateCauseListModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitGenerateCauseList">Run Prioritization &amp; Issue Roster</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: SCHEDULE COURT HEARING (CLERK WORKFLOW)
+         ============================================================== -->
+    <div class="modal-overlay" id="scheduleHearingModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Schedule Court Hearing</h2>
+                        <span class="modal-desc">Calendar a new bench trial appearance on a case docket (R11)</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('scheduleHearingModal')">&times;</button>
+            </div>
+            <form id="scheduleHearingForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="sched_cnr">Target Case CNR (16-char) <span class="required">*</span></label>
+                        <input type="text" id="sched_cnr" class="form-input font-mono" placeholder="e.g. GJAH010000012024" required />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="sched_judge_id">Presiding Judicial Officer <span class="required">*</span></label>
+                            <select id="sched_judge_id" class="form-select w-100" required>
+                                <option value="201">Judge Vivaan Modi (#201)</option>
+                                <option value="202">Judge Ananya Sen (#202)</option>
+                                <option value="203">Judge Devendra Shah (#203)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="sched_causelist_id">Daily Cause List ID <span class="required">*</span></label>
+                            <input type="number" id="sched_causelist_id" class="form-input" value="1" min="1" required />
+                        </div>
+                    </div>
+                    <div class="alert-box-info">
+                        <strong>Automatic Alert:</strong> Scheduling automatically delivers a <em>Hearing Reminder</em> notification to all parties and assigned counsel on record.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('scheduleHearingModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitScheduleHearing">Schedule Session</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         MODAL: DRAFT JUDICIAL ORDER (TWO-STEP JUDGE WORKFLOW)
+         ============================================================== -->
+    <div class="modal-overlay" id="draftOrderModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Draft Judicial Order</h2>
+                        <span class="modal-desc">Step 1 of 2: Prepare draft decree before open court pronouncement (Judge privilege)</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('draftOrderModal')">&times;</button>
+            </div>
+            <form id="draftOrderForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="order_cnr">Target Case CNR <span class="required">*</span></label>
+                        <input type="text" id="order_cnr" class="form-input font-mono" placeholder="e.g. GJAH010000012024" required />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label" for="order_type_select">Decree Type <span class="required">*</span></label>
+                            <select id="order_type_select" class="form-select w-100" required>
+                                <option value="Procedural Order">Procedural Order</option>
+                                <option value="Interim Order">Interim Order</option>
+                                <option value="Final Judgment">Final Judgment (Concludes &amp; Disposes Case)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="order_hearing_seq">Linked Hearing Sequence #</label>
+                            <input type="number" id="order_hearing_seq" class="form-input" value="1" min="1" />
+                        </div>
+                    </div>
+                    <div class="alert-box-info">
+                        <strong>Two-Step Protocol:</strong> The drafted order is recorded with timestamp and reserved. It will only take legal effect once you sign &amp; publish it.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('draftOrderModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitDraftOrder">Reserve Draft Order</button>
                 </div>
             </form>
         </div>

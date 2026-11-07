@@ -1,5 +1,5 @@
 // app.js - District Court Case Management System (RBAC Multi-Role Controller)
-// Handles dual-sided access control: Administration (Clerk, Judge, Administrator) & User (Advocate, Litigant)
+// Sessions Division • Comprehensive Relational Ledger with High-Assurance RBAC
 
 let allCases = [];
 let currentPage = 1;
@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     applyUserRoleUI();
     initTabs();
     loadDashboardStats();
+    loadAlerts();
     
     // Always start on Cases Ledger tab
     switchTab('tab-cases');
@@ -70,6 +71,21 @@ function applyUserRoleUI() {
     if (toolbarBtn) toolbarBtn.style.display = canFile ? 'inline-flex' : 'none';
     if (enrollWitBtn) enrollWitBtn.style.display = canFile ? 'inline-flex' : 'none';
     if (uploadDocBtn) uploadDocBtn.style.display = (isAdvocate || isClerk || isAdmin) ? 'inline-flex' : 'none';
+
+    // Toolbar Specific Role Actions (Cause List, Scheduling, Orders)
+    const btnGenCL = document.getElementById('btnGenerateCauseListToolbar');
+    const btnSchedH = document.getElementById('btnScheduleHearingToolbar');
+    const btnDraftOrd = document.getElementById('btnDraftOrderToolbar');
+
+    if (btnGenCL) btnGenCL.style.display = (isClerk || isAdmin) ? 'inline-flex' : 'none';
+    if (btnSchedH) btnSchedH.style.display = (isClerk || isAdmin) ? 'inline-flex' : 'none';
+    if (btnDraftOrd) btnDraftOrd.style.display = isJudge ? 'inline-flex' : 'none';
+
+    // Bench Notes Column Header Privacy (SRS Section 4.1: Only visible to Judges)
+    const thBenchNote = document.getElementById('thBenchNote');
+    if (thBenchNote) {
+        thBenchNote.style.display = isJudge ? '' : 'none';
+    }
 
     // Tabs Visibility & Dynamic Labels
     const tabCases = document.getElementById('tabNavCases');
@@ -126,7 +142,7 @@ function applyUserRoleUI() {
         if (isClerk) {
             bannerMsg.innerHTML = `<strong>Registry Operations Mode (Clerk #${currentUser.user_id}):</strong> Authorized to file new case plaints, schedule daily cause lists, enroll witnesses, and update case progress metadata.`;
         } else if (isJudge) {
-            bannerMsg.innerHTML = `<strong>Judicial Bench Authority (Hon'ble Judge #${currentUser.user_id}):</strong> Presiding over court trials. Exclusively authorized to record confidential Bench Notes and Sign &amp; Publish judicial decrees.`;
+            bannerMsg.innerHTML = `<strong>Judicial Bench Authority (Hon'ble Judge #${currentUser.user_id}):</strong> Presiding over court trials. Exclusively authorized to draft judicial orders, record confidential Bench Notes, and Sign &amp; Publish judicial decrees.`;
         } else if (isAdvocate) {
             bannerMsg.innerHTML = `<strong>Counsel Retainer Workspace (Advocate #${currentUser.user_id}):</strong> Client privilege filter active. Displaying exclusively cases where you are on record as Lead or Associate Counsel.`;
         } else if (isLitigant) {
@@ -220,6 +236,18 @@ function setupEventListeners() {
     const docForm = document.getElementById('uploadDocForm');
     if (docForm) docForm.addEventListener('submit', handleUploadDocSubmit);
 
+    // Cause List Generation Form
+    const clForm = document.getElementById('generateCauseListForm');
+    if (clForm) clForm.addEventListener('submit', handleGenerateCauseList);
+
+    // Schedule Hearing Form
+    const schedForm = document.getElementById('scheduleHearingForm');
+    if (schedForm) schedForm.addEventListener('submit', handleScheduleHearing);
+
+    // Draft Order Form
+    const draftForm = document.getElementById('draftOrderForm');
+    if (draftForm) draftForm.addEventListener('submit', handleDraftOrder);
+
     // Drawer edit button
     document.getElementById('btnDrawerEdit').addEventListener('click', () => {
         if (currentDossierCnr) {
@@ -248,7 +276,6 @@ async function loginPresetUser(userId, expectedRole) {
         closeModal('switchUserModal');
         showToast(`Active session switched to ${currentUser.name} (${currentUser.user_role})`, 'success');
 
-        // Auto-switch to the primary tab for the selected role
         currentPage = 1;
         if (currentUser.user_role === 'Judge') {
             switchTab('tab-hearings');
@@ -256,6 +283,7 @@ async function loginPresetUser(userId, expectedRole) {
             switchTab('tab-cases');
         }
         loadDashboardStats();
+        loadAlerts();
     } catch (err) {
         showToast(err.message, 'danger');
     }
@@ -289,6 +317,7 @@ async function handleCustomLogin() {
             switchTab('tab-cases');
         }
         loadDashboardStats();
+        loadAlerts();
     } catch (err) {
         showToast(err.message, 'danger');
     }
@@ -303,83 +332,139 @@ function getAuthHeaders() {
 }
 
 // ==============================================================
-// 3. DASHBOARD SUMMARY CARDS (Dynamic & Role-Specific)
+// 3. DASHBOARD STATS (DYNAMIC PER ROLE)
 // ==============================================================
 async function loadDashboardStats() {
     try {
         const res = await fetch('/api/stats', { headers: getAuthHeaders() });
         const json = await res.json();
-        if (json.success) {
-            const container = document.getElementById('kpiCardsRow');
-            if (json.cards && container) {
-                container.innerHTML = json.cards.map(c => `
-                    <div class="card" style="border-left: 3px solid ${c.color || 'var(--primary)'};">
-                        <span class="card-label">${escapeHtml(c.label)}</span>
-                        <span class="card-num" style="color:${c.color || 'var(--primary)'};">${Number(c.value || 0).toLocaleString()}</span>
-                        <span class="card-caption">${escapeHtml(c.sub)}</span>
-                    </div>
-                `).join('');
-            }
+        if (!json.success) return;
 
-            if (json.stats) {
-                const s = json.stats;
-                const bCases = document.getElementById('badgeCases');
-                const bHearings = document.getElementById('badgeHearings');
-                const bOrders = document.getElementById('badgeOrders');
-                const bWitnesses = document.getElementById('badgeWitnesses');
-                if (bCases) bCases.innerText = s.total_cases || '--';
-                if (bHearings) bHearings.innerText = s.total_hearings || '--';
-                if (bOrders) bOrders.innerText = s.published_orders || '--';
-                if (bWitnesses) bWitnesses.innerText = s.total_witnesses || '--';
-            }
+        const row = document.getElementById('kpiCardsRow');
+        if (row && json.cards) {
+            row.innerHTML = json.cards.map((c, idx) => `
+                <div class="card" style="border-top: 3px solid ${c.color || 'var(--primary)'};">
+                    <span class="card-label">${escapeHtml(c.label)}</span>
+                    <span class="card-num" style="color:${c.color || 'var(--primary)'};">${c.value !== undefined ? Number(c.value).toLocaleString() : '--'}</span>
+                    <span class="card-caption">${escapeHtml(c.sub || '')}</span>
+                </div>
+            `).join('');
+        }
+
+        // Update tab badges if available
+        if (json.stats) {
+            const bc = document.getElementById('badgeCases');
+            const bh = document.getElementById('badgeHearings');
+            const bo = document.getElementById('badgeOrders');
+            const bw = document.getElementById('badgeWitnesses');
+            if (bc) bc.innerText = json.stats.total_cases || '--';
+            if (bh) bh.innerText = json.stats.total_hearings || '--';
+            if (bo) bo.innerText = json.stats.published_orders || '--';
+            if (bw) bw.innerText = json.stats.total_witnesses || '--';
         }
     } catch (err) {
-        console.warn('Could not refresh summary cards:', err);
+        console.error('Failed to load dashboard KPIs:', err);
     }
 }
 
-function filterByCard(status, urgency) {
-    switchTab('tab-cases');
-    const statusSelect = document.getElementById('caseFilterStatus');
-    const urgencySelect = document.getElementById('caseFilterUrgency');
-    const searchInput = document.getElementById('caseSearchInput');
+// ==============================================================
+// 4. AUTOMATED ALERTS & NOTIFICATIONS (REQ-04, P1)
+// ==============================================================
+async function loadAlerts() {
+    const badge = document.getElementById('unreadAlertCount');
+    const container = document.getElementById('alertsContainer');
+    const summary = document.getElementById('alertsSummaryText');
 
-    statusSelect.value = status;
-    urgencySelect.value = urgency;
-    searchInput.value = '';
+    try {
+        const res = await fetch('/api/alerts', { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) return;
 
-    currentPage = 1;
-    loadCases();
+        if (badge) {
+            if (json.unreadCount > 0) {
+                badge.innerText = json.unreadCount > 99 ? '99+' : json.unreadCount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        if (summary) {
+            summary.innerText = `${json.rowCount} court notifications (${json.unreadCount} unread)`;
+        }
+
+        if (container) {
+            if (!json.data || json.data.length === 0) {
+                container.innerHTML = '<div class="table-empty-box"><p>No system notifications for your account.</p></div>';
+                return;
+            }
+
+            container.innerHTML = json.data.map(a => {
+                const isUnread = a.alert_status === 'Delivered';
+                let tagClass = 'alert-tag-case';
+                if (a.alert_type === 'Hearing Reminder') tagClass = 'alert-tag-hearing';
+                else if (a.alert_type === 'Order Published') tagClass = 'alert-tag-order';
+                else if (a.alert_type === 'Document Uploaded') tagClass = 'alert-tag-doc';
+
+                return `
+                    <div class="alert-item-card ${isUnread ? 'unread' : 'read'}">
+                        <div style="flex:1;">
+                            <div class="alert-item-title">
+                                <span class="alert-tag ${tagClass}">${escapeHtml(a.alert_type)}</span>
+                                <a class="case-cnr-link font-mono" onclick="closeModal('alertsModal'); viewDossier('${escapeHtml(a.cnr)}');">
+                                    ${escapeHtml(a.cnr)}
+                                </a>
+                            </div>
+                            <div class="alert-item-meta">
+                                Case: ${escapeHtml(a.case_number || 'Docket')} • Status: ${escapeHtml(a.case_status || 'Active')}
+                            </div>
+                            <div style="font-size:11.5px; color:var(--text-muted); margin-top:3px;">
+                                ${formatDate(a.alert_timestamp)} (${a.alert_status})
+                            </div>
+                        </div>
+                        ${isUnread ? `<button class="btn btn-sm btn-outline" onclick="markAlertAsRead(${a.alert_id})">Mark Read</button>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+    } catch (err) {
+        console.error('Failed to load notifications:', err);
+    }
 }
 
-function clearCaseFilters() {
-    document.getElementById('caseSearchInput').value = '';
-    document.getElementById('caseFilterUrgency').value = 'ALL';
-    document.getElementById('caseFilterStatus').value = 'ALL';
-    currentPage = 1;
-    loadCases();
+async function markAlertAsRead(alertId) {
+    try {
+        const res = await fetch(`/api/alerts/${alertId}/read`, {
+            method: 'PUT',
+            headers: getAuthHeaders()
+        });
+        const json = await res.json();
+        if (json.success) {
+            loadAlerts();
+        }
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
 }
 
-function clearHearingFilters() {
-    document.getElementById('hearingSearchInput').value = '';
-    document.getElementById('hearingFilterOutcome').value = 'ALL';
-    loadHearings();
-}
-
-function clearOrderFilters() {
-    document.getElementById('orderSearchInput').value = '';
-    document.getElementById('orderFilterType').value = 'ALL';
-    document.getElementById('orderFilterPublish').value = 'ALL';
-    loadOrders();
-}
-
-function clearWitnessFilters() {
-    document.getElementById('witnessSearchInput').value = '';
-    loadWitnesses();
+async function markAllAlertsAsRead() {
+    try {
+        const res = await fetch('/api/alerts/read-all', {
+            method: 'PUT',
+            headers: getAuthHeaders()
+        });
+        const json = await res.json();
+        if (json.success) {
+            showToast('All delivered alerts marked as read.', 'success');
+            loadAlerts();
+        }
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
 }
 
 // ==============================================================
-// 4. TAB 1: MASTER CASES (WITH ROLE ACCESS PERMISSIONS)
+// 5. TAB 1: MASTER CASES (WITH MULTI-PARAM SEARCH & RBAC)
 // ==============================================================
 async function loadCases() {
     const tbody = document.getElementById('caseTableBody');
@@ -448,7 +533,6 @@ function renderPaginatedCases() {
     countLabel.innerText = `Showing ${startIndex + 1}–${endIndex} of ${totalRecords} cases`;
     pageRangeLabel.innerText = `Page ${currentPage} of ${totalPages}`;
 
-    // RBAC: Determine which action buttons to display
     const canEdit = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
     const canDelete = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
 
@@ -503,27 +587,28 @@ function renderPaginatedCases() {
         tbody.appendChild(tr);
     });
 
-    // Pagination controls
-    document.getElementById('btnPrevPage').disabled = currentPage === 1;
-    document.getElementById('btnNextPage').disabled = currentPage === totalPages;
+    renderPaginationControls(totalPages);
+}
 
-    pageNumbersContainer.innerHTML = '';
-    const maxButtons = 5;
-    let startBtn = Math.max(1, currentPage - 2);
-    let endBtn = Math.min(totalPages, startBtn + maxButtons - 1);
-    if (endBtn - startBtn < maxButtons - 1) {
-        startBtn = Math.max(1, endBtn - maxButtons + 1);
+function renderPaginationControls(totalPages) {
+    const container = document.getElementById('pageNumbersContainer');
+    container.innerHTML = '';
+
+    document.getElementById('btnPrevPage').disabled = (currentPage === 1);
+    document.getElementById('btnNextPage').disabled = (currentPage === totalPages);
+
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) {
+        startPage = Math.max(1, endPage - 4);
     }
 
-    for (let i = startBtn; i <= endBtn; i++) {
+    for (let i = startPage; i <= endPage; i++) {
         const btn = document.createElement('button');
         btn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
         btn.innerText = i;
-        btn.onclick = () => {
-            currentPage = i;
-            renderPaginatedCases();
-        };
-        pageNumbersContainer.appendChild(btn);
+        btn.onclick = () => { currentPage = i; renderPaginatedCases(); };
+        container.appendChild(btn);
     }
 }
 
@@ -535,17 +620,25 @@ function prevPage() {
 }
 
 function nextPage() {
-    const totalPages = Math.ceil(allCases.length / pageSize);
+    const totalPages = Math.ceil(allCases.length / pageSize) || 1;
     if (currentPage < totalPages) {
         currentPage++;
         renderPaginatedCases();
     }
 }
 
-function changePageSize(newSize) {
-    pageSize = parseInt(newSize, 10);
+function changePageSize(val) {
+    pageSize = parseInt(val, 10);
     currentPage = 1;
     renderPaginatedCases();
+}
+
+function clearCaseFilters() {
+    document.getElementById('caseSearchInput').value = '';
+    document.getElementById('caseFilterUrgency').value = 'ALL';
+    document.getElementById('caseFilterStatus').value = 'ALL';
+    currentPage = 1;
+    loadCases();
 }
 
 // CREATE CASE (INSERT)
@@ -581,6 +674,7 @@ async function handleCreateCase(e) {
         closeModal('createCaseModal');
         loadCases();
         loadDashboardStats();
+        loadAlerts();
     } catch (err) {
         showToast(err.message, 'danger');
     } finally {
@@ -589,7 +683,7 @@ async function handleCreateCase(e) {
     }
 }
 
-// UPDATE CASE
+// UPDATE CASE (With Irreversible Disposal Guard)
 function openUpdateModal(cnr) {
     const c = allCases.find(item => item.cnr === cnr);
     if (!c) return;
@@ -597,7 +691,27 @@ function openUpdateModal(cnr) {
     document.getElementById('upd_cnr').value = c.cnr;
     document.getElementById('upd_fir').value = c.fir_number || '';
     document.getElementById('upd_urgency').value = c.statutory_urgency;
-    document.getElementById('upd_status').value = c.case_status === 'Disposed' ? 'Pending' : c.case_status;
+    document.getElementById('upd_status').value = c.case_status;
+
+    const warningEl = document.getElementById('upd_disposed_warning');
+    const submitBtn = document.getElementById('btnSubmitUpdate');
+    const statusSelect = document.getElementById('upd_status');
+    const urgencySelect = document.getElementById('upd_urgency');
+    const firInput = document.getElementById('upd_fir');
+
+    if (c.case_status === 'Disposed') {
+        if (warningEl) warningEl.style.display = 'block';
+        if (submitBtn) submitBtn.disabled = true;
+        if (statusSelect) statusSelect.disabled = true;
+        if (urgencySelect) urgencySelect.disabled = true;
+        if (firInput) firInput.disabled = true;
+    } else {
+        if (warningEl) warningEl.style.display = 'none';
+        if (submitBtn) submitBtn.disabled = false;
+        if (statusSelect) statusSelect.disabled = false;
+        if (urgencySelect) urgencySelect.disabled = false;
+        if (firInput) firInput.disabled = false;
+    }
 
     openModal('updateCaseModal');
 }
@@ -631,6 +745,7 @@ async function handleUpdateCase(e) {
         closeModal('updateCaseModal');
         loadCases();
         loadDashboardStats();
+        loadAlerts();
         if (currentDossierCnr === cnr) viewDossier(cnr);
     } catch (err) {
         showToast(err.message, 'danger');
@@ -661,7 +776,7 @@ async function handleConfirmDelete() {
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`Case ${deleteTargetCnr} permanently deleted.`, 'success');
+        showToast(`Case ${deleteTargetCnr} permanently removed from registry.`, 'success');
         closeModal('deleteCaseModal');
         deleteTargetCnr = null;
         loadCases();
@@ -675,7 +790,7 @@ async function handleConfirmDelete() {
 }
 
 // ==============================================================
-// 5. RIGHT-SIDE CASE DETAIL DRAWER
+// 6. RIGHT-SIDE CASE DETAIL DOSSIER (With Bench Note Privacy)
 // ==============================================================
 async function viewDossier(cnr) {
     currentDossierCnr = cnr;
@@ -684,7 +799,6 @@ async function viewDossier(cnr) {
     const badgeContainer = document.getElementById('dossierBadges');
     const editBtn = document.getElementById('btnDrawerEdit');
 
-    // Only Clerk or Admin can edit from drawer
     if (editBtn) {
         editBtn.style.display = ['Clerk', 'Court Administrator'].includes(currentUser.user_role) ? 'inline-flex' : 'none';
     }
@@ -702,80 +816,52 @@ async function viewDossier(cnr) {
         const d = json.dossier;
         const c = d.case_details;
 
-        const statusBadgeClass = c.case_status === 'Pending' ? 'badge-pending' :
-                                c.case_status === 'Filed' ? 'badge-filed' : 'badge-disposed';
-        const urgencyBadgeClass = c.statutory_urgency === 'Urgent' ? 'badge-urgent' :
-                                 c.statutory_urgency === 'Statutory' ? 'badge-statutory' : '';
-
         badgeContainer.innerHTML = `
-            <span class="status-badge ${statusBadgeClass}">${c.case_status}</span>
-            ${c.statutory_urgency !== 'Normal' ? `<span class="status-badge ${urgencyBadgeClass}">${c.statutory_urgency}</span>` : ''}
+            <span class="status-badge ${c.case_status === 'Pending' ? 'badge-pending' : (c.case_status === 'Disposed' ? 'badge-disposed' : 'badge-filed')}">${escapeHtml(c.case_status)}</span>
+            <span class="status-badge ${c.statutory_urgency === 'Urgent' ? 'badge-urgent' : 'badge-statutory'}">${escapeHtml(c.statutory_urgency)}</span>
         `;
 
-        const isJudge = currentUser.user_role === 'Judge';
         const timelineEvents = [];
-
         (d.hearings || []).forEach(h => {
-            // SRS REQ-03: Judge's private bench notes are visible to Judge, masked for public/litigant
-            const benchText = isJudge
-                ? (h.bench_note ? `Bench Note: "${h.bench_note}"` : 'No bench notes.')
-                : (currentUser.user_role === 'Clerk' || currentUser.user_role === 'Court Administrator'
-                    ? (h.bench_note ? `Note: "${h.bench_note}"` : '—')
-                    : 'Procedural record filed.');
-
             timelineEvents.push({
-                type: 'Hearing',
                 date: h.hearing_date,
-                title: `Hearing #${h.hearing_seq_no}: ${h.outcome || 'Pending Hearing'}`,
-                desc: benchText,
-                meta: h.judge_id ? `Judge #${h.judge_id}` : 'Unassigned',
-                isOrder: false
+                type: 'Hearing Session',
+                title: `Hearing #${h.hearing_seq_no} • ${h.outcome || 'Pending Outcome'}`,
+                desc: h.bench_note ? `Judicial Notes: ${h.bench_note}` : (currentUser.user_role === 'Judge' ? 'No bench notes recorded' : 'Private to Presiding Bench'),
+                meta: `Judge #${h.judge_id || 'N/A'} • Cause List #${h.causelist_id || 'N/A'}`
             });
         });
-
         (d.orders || []).forEach(o => {
             timelineEvents.push({
-                type: 'Order',
                 date: o.published_date || o.draft_timestamp,
-                title: `${o.order_type} (${o.publish_status})`,
-                desc: o.published_date ? `Published on ${formatDate(o.published_date)}` : `Drafted on ${formatDate(o.draft_timestamp)} (Draft)`,
-                meta: `Judge #${o.judge_id}`,
+                type: 'Judicial Order',
+                title: `${o.order_type} #${o.order_seq_no} (${o.publish_status})`,
+                desc: o.published_date ? `Signed and legally pronounced on ${formatDate(o.published_date)}` : 'Draft Reserved - Awaiting Bench Signature',
+                meta: `Authoring Judge: #${o.judge_id} • Hearing Seq #${o.hearing_seq_no || 'N/A'}`,
                 isOrder: true
             });
         });
 
-        timelineEvents.sort((a, b) => {
-            const da = a.date ? new Date(a.date) : new Date(0);
-            const db = b.date ? new Date(b.date) : new Date(0);
-            return da - db;
-        });
+        timelineEvents.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-        let html = `
+        const html = `
             <div class="drawer-section">
-                <div class="drawer-section-title">Case Metadata</div>
-                <div class="details-grid">
-                    <div class="grid-item">
-                        <span class="grid-k">Filing Number</span>
-                        <span class="grid-v font-mono">${c.standardized_filing_number}</span>
-                    </div>
-                    <div class="grid-item">
-                        <span class="grid-k">Case Number</span>
-                        <span class="grid-v font-mono">${c.case_number}</span>
-                    </div>
-                    <div class="grid-item">
-                        <span class="grid-k">FIR Reference</span>
-                        <span class="grid-v">${c.fir_number || 'Civil Case (No FIR)'}</span>
-                    </div>
-                    <div class="grid-item">
-                        <span class="grid-k">Registering Clerk</span>
-                        <span class="grid-v">Clerk #${c.registered_by_clerk_id}</span>
-                    </div>
+                <div class="drawer-section-title">Case Metadata (R7)</div>
+                <div class="drawer-kv-grid">
+                    <div class="drawer-kv-label">Standardized Filing No:</div>
+                    <div class="drawer-kv-value font-mono">${escapeHtml(c.standardized_filing_number)}</div>
+                    <div class="drawer-kv-label">Case Number:</div>
+                    <div class="drawer-kv-value">${escapeHtml(c.case_number)}</div>
+                    <div class="drawer-kv-label">FIR Reference:</div>
+                    <div class="drawer-kv-value">${c.fir_number ? escapeHtml(c.fir_number) : '<span class="text-muted">—</span>'}</div>
+                    <div class="drawer-kv-label">Filing Intake Clerk:</div>
+                    <div class="drawer-kv-value">Clerk #${c.registered_by_clerk_id}</div>
                 </div>
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Involved Parties</div>
-                ${(d.parties || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No parties assigned.</div>' :
+                <div class="drawer-section-title">Litigant Parties (R8 &amp; R1)</div>
+                ${(d.parties || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No litigant parties enrolled.</div>' :
                     d.parties.map(p => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
                             <span><strong>${escapeHtml(p.party_role)}:</strong> ${escapeHtml(p.name)}</span>
@@ -786,7 +872,7 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Assigned Advocates</div>
+                <div class="drawer-section-title">Assigned Advocates (R9 &amp; R1)</div>
                 ${(d.advocates || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No advocates on record.</div>' :
                     d.advocates.map(a => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -817,12 +903,12 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Case Documents (R15)</div>
-                ${(!d.documents || d.documents.length === 0) ? '<div class="text-muted" style="font-size:13px;">No digital documents uploaded.</div>' :
+                <div class="drawer-section-title">Case Pleadings & Exhibits (R15)</div>
+                ${(!d.documents || d.documents.length === 0) ? '<div class="text-muted" style="font-size:13px;">No digital pleadings filed.</div>' :
                     d.documents.map(doc => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
                             <span><strong>#${doc.doc_seq_no} ${escapeHtml(doc.document_type)}</strong> (${formatDate(doc.upload_date)})</span>
-                            <span class="text-muted">Advocate #${doc.advocate_id}</span>
+                            <span class="text-muted">Counsel #${doc.advocate_id}</span>
                         </div>
                     `).join('')
                 }
@@ -836,7 +922,7 @@ async function viewDossier(cnr) {
 }
 
 // ==============================================================
-// 6. TAB 2: HEARINGS SCHEDULE
+// 7. TAB 2: HEARINGS SCHEDULE & CAUSE LIST ROSTER
 // ==============================================================
 async function loadHearings() {
     const tbody = document.getElementById('hearingTableBody');
@@ -868,12 +954,12 @@ function renderHearingsTable(hearings) {
     const tbody = document.getElementById('hearingTableBody');
     tbody.innerHTML = '';
 
+    const isJudge = currentUser.user_role === 'Judge';
+
     if (!hearings || hearings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="table-loading">No hearings match the selected criteria.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${isJudge ? 8 : 7}" class="table-loading">No hearings match the selected criteria.</td></tr>`;
         return;
     }
-
-    const isJudge = ['Judge', 'Court Administrator'].includes(currentUser.user_role);
 
     let lastDate = null;
     hearings.forEach(h => {
@@ -883,7 +969,7 @@ function renderHearingsTable(hearings) {
             const groupHeader = document.createElement('tr');
             groupHeader.style.backgroundColor = 'var(--header-bg)';
             groupHeader.innerHTML = `
-                <td colspan="8" style="font-weight:700; color:var(--primary); padding:8px 16px; border-bottom:1px solid var(--border);">
+                <td colspan="${isJudge ? 8 : 7}" style="font-weight:700; color:var(--primary); padding:8px 16px; border-bottom:1px solid var(--border);">
                     Hearing Session Date: ${dateStr}
                 </td>
             `;
@@ -893,10 +979,25 @@ function renderHearingsTable(hearings) {
 
         const tr = document.createElement('tr');
         let actionBtn = '<span class="text-muted" style="font-size:12px;">Hearing Record</span>';
+
+        // Judge actions: Only the Presiding Judge on this hearing can record bench notes & outcome
         if (isJudge) {
-            const safeNote = (h.bench_note || '').replace(/'/g, "\\'");
-            const safeOutcome = (h.outcome || '').replace(/'/g, "\\'");
-            actionBtn = `<button class="btn btn-sm btn-outline" onclick="openJudgeBenchModal('${escapeHtml(h.cnr)}', ${h.hearing_seq_no}, '${safeOutcome}', '${safeNote}')">Bench Note / Outcome</button>`;
+            if (h.judge_id === currentUser.user_id) {
+                const safeNote = (h.bench_note || '').replace(/'/g, "\\'");
+                const safeOutcome = (h.outcome || '').replace(/'/g, "\\'");
+                actionBtn = `<button class="btn btn-sm btn-outline" onclick="openJudgeBenchModal('${escapeHtml(h.cnr)}', ${h.hearing_seq_no}, '${safeOutcome}', '${safeNote}')">Bench Note / Outcome</button>`;
+            } else {
+                actionBtn = `<span class="text-muted" style="font-size:11.5px;">Bench #${h.judge_id}</span>`;
+            }
+        }
+
+        let benchNoteCell = '';
+        if (isJudge) {
+            if (h.judge_id === currentUser.user_id) {
+                benchNoteCell = `<td style="color:var(--text-muted); max-width:260px;">${h.bench_note ? escapeHtml(h.bench_note) : '<span class="text-muted">No notes recorded</span>'}</td>`;
+            } else {
+                benchNoteCell = `<td class="text-muted" style="font-size:12px;">Presiding: Judge #${h.judge_id}</td>`;
+            }
         }
 
         tr.innerHTML = `
@@ -908,7 +1009,7 @@ function renderHearingsTable(hearings) {
             <td>Hearing #${h.hearing_seq_no}</td>
             <td>${dateStr}</td>
             <td><strong>${h.outcome ? escapeHtml(h.outcome) : '<span class="text-muted">Awaiting Outcome</span>'}</strong></td>
-            <td style="color:var(--text-muted); max-width:280px;">${h.bench_note ? escapeHtml(h.bench_note) : '—'}</td>
+            ${benchNoteCell}
             <td>Judge #${h.judge_id || 'N/A'}</td>
             <td>${h.causelist_id ? `List #${h.causelist_id}` : '—'}</td>
             <td class="text-right">${actionBtn}</td>
@@ -953,6 +1054,7 @@ async function handleJudgeBenchSubmit(e) {
         closeModal('judgeBenchModal');
         loadHearings();
         loadDashboardStats();
+        loadAlerts();
         if (currentDossierCnr === cnr) viewDossier(cnr);
     } catch (err) {
         showToast(err.message, 'danger');
@@ -962,8 +1064,78 @@ async function handleJudgeBenchSubmit(e) {
     }
 }
 
+// CAUSE LIST GENERATION ALGORITHM (REQ-05, P1)
+async function handleGenerateCauseList(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitGenerateCauseList');
+    btn.disabled = true;
+    btn.innerText = 'Prioritizing Cases...';
+
+    const list_date = document.getElementById('cl_target_date').value;
+
+    try {
+        const res = await fetch('/api/causelists/generate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({ list_date, clerk_id: currentUser.user_id })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        showToast(json.message, 'success');
+        closeModal('generateCauseListModal');
+        loadHearings();
+        loadDashboardStats();
+        loadAlerts();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Run Prioritization & Issue Roster';
+    }
+}
+
+// SCHEDULE HEARING
+async function handleScheduleHearing(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitScheduleHearing');
+    btn.disabled = true;
+    btn.innerText = 'Scheduling...';
+
+    const cnr = document.getElementById('sched_cnr').value.trim();
+    const judge_id = document.getElementById('sched_judge_id').value;
+    const causelist_id = document.getElementById('sched_causelist_id').value;
+
+    try {
+        const res = await fetch('/api/hearings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({ cnr, judge_id, causelist_id })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        showToast(json.message, 'success');
+        closeModal('scheduleHearingModal');
+        loadHearings();
+        loadDashboardStats();
+        loadAlerts();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Schedule Session';
+    }
+}
+
 // ==============================================================
-// 7. TAB 3: ORDERS & JUDGMENTS (WITH JUDGE PUBLISH PRIVILEGE)
+// 8. TAB 3: ORDERS & JUDGMENTS (TWO-STEP JUDICIAL WORKFLOW)
 // ==============================================================
 async function loadOrders() {
     const tbody = document.getElementById('orderTableBody');
@@ -1002,8 +1174,7 @@ function renderOrdersTable(orders) {
         return;
     }
 
-    // RBAC: Only Judge or Court Administrator can publish orders
-    const canPublish = ['Judge', 'Court Administrator'].includes(currentUser.user_role);
+    const isJudge = currentUser.user_role === 'Judge';
 
     orders.forEach(o => {
         const tr = document.createElement('tr');
@@ -1013,13 +1184,13 @@ function renderOrdersTable(orders) {
 
         let actionBtn = '';
         if (o.publish_status === 'Draft') {
-            if (canPublish) {
-                actionBtn = `<button class="btn btn-sm btn-outline" onclick="publishOrder('${escapeHtml(o.cnr)}', ${o.order_seq_no})">Sign & Publish</button>`;
+            if (isJudge && o.judge_id === currentUser.user_id) {
+                actionBtn = `<button class="btn btn-sm btn-primary" onclick="confirmPublishOrder('${escapeHtml(o.cnr)}', ${o.order_seq_no}, '${escapeHtml(o.order_type)}')">Sign & Publish</button>`;
             } else {
-                actionBtn = '<span class="text-muted" style="font-size:12px;">Awaiting Bench Sign</span>';
+                actionBtn = `<span class="text-muted" style="font-size:12px;">Draft (Judge #${o.judge_id})</span>`;
             }
         } else {
-            actionBtn = '<span class="text-muted" style="font-size:12px;">Archived</span>';
+            actionBtn = '<span class="text-muted" style="font-size:12px;">Certified Decree</span>';
         }
 
         tr.innerHTML = `
@@ -1040,7 +1211,49 @@ function renderOrdersTable(orders) {
     });
 }
 
-async function publishOrder(cnr, seq) {
+// DRAFT ORDER SUBMISSION
+async function handleDraftOrder(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnSubmitDraftOrder');
+    btn.disabled = true;
+    btn.innerText = 'Reserving Draft...';
+
+    const cnr = document.getElementById('order_cnr').value.trim();
+    const order_type = document.getElementById('order_type_select').value;
+    const hearing_seq_no = document.getElementById('order_hearing_seq').value;
+
+    try {
+        const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({ cnr, order_type, hearing_seq_no })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        showToast(json.message, 'success');
+        closeModal('draftOrderModal');
+        loadOrders();
+        loadDashboardStats();
+        loadAlerts();
+    } catch (err) {
+        showToast(err.message, 'danger');
+    } finally {
+        btn.disabled = false;
+        btn.innerText = 'Reserve Draft Order';
+    }
+}
+
+// CONFIRM & PUBLISH ORDER (Automated Disposal on Final Judgment)
+async function confirmPublishOrder(cnr, seq, orderType) {
+    if (orderType === 'Final Judgment') {
+        const ok = confirm(`Judicial Concurrence Required:\n\nSigning and publishing this Final Judgment decree will officially conclude this litigation and permanently mark case ${cnr} as DISPOSED.\n\nDo you wish to affix your digital judicial signature and pronounce decree?`);
+        if (!ok) return;
+    }
+
     try {
         const res = await fetch(`/api/orders/${encodeURIComponent(cnr)}/${seq}/publish`, {
             method: 'PUT',
@@ -1049,16 +1262,18 @@ async function publishOrder(cnr, seq) {
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`Order #${seq} for case ${cnr} published with judicial signature.`, 'success');
+        showToast(json.message, 'success');
         loadOrders();
         loadDashboardStats();
+        loadAlerts();
+        if (currentDossierCnr === cnr) viewDossier(cnr);
     } catch (err) {
         showToast(err.message, 'danger');
     }
 }
 
 // ==============================================================
-// 8. TAB 4: WITNESSES
+// 9. TAB 4: WITNESSES
 // ==============================================================
 async function loadWitnesses() {
     const tbody = document.getElementById('witnessTableBody');
@@ -1099,7 +1314,7 @@ function renderWitnessTable(witnesses) {
             <td>Witness #${w.witness_id}</td>
             <td><strong>${escapeHtml(w.name)}</strong></td>
             <td class="font-mono">${escapeHtml(w.contact_number)}</td>
-            <td>${w.summons_count} Summons Served</td>
+            <td>${Number(w.summons_count) > 0 ? `<span class="status-badge badge-published">${w.summons_count} Summons Dispatched</span>` : '<span class="text-muted">Repository Only</span>'}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1129,7 +1344,7 @@ async function handleCreateWitness(e) {
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`Witness ${payload.name} enrolled.`, 'success');
+        showToast(`Witness ${payload.name} registered.`, 'success');
         closeModal('createWitnessModal');
         loadWitnesses();
         loadDashboardStats();
@@ -1142,128 +1357,56 @@ async function handleCreateWitness(e) {
 }
 
 // ==============================================================
-// 9. TAB 5: COURT ADMINISTRATOR (SYSTEM USERS & AUDIT)
-// ==============================================================
-async function loadSystemUsers() {
-    const tbody = document.getElementById('adminUserTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Querying system_users and ISA subtypes...</td></tr>';
-
-    try {
-        const res = await fetch('/api/users', { headers: getAuthHeaders() });
-        const json = await res.json();
-        if (!json.success) throw new Error(json.error);
-
-        tbody.innerHTML = '';
-        json.data.forEach(u => {
-            const tr = document.createElement('tr');
-            let roleBadgeClass = 'badge-clerk';
-            if (u.user_role === 'Judge') roleBadgeClass = 'badge-judge';
-            else if (u.user_role === 'Court Administrator') roleBadgeClass = 'badge-admin';
-            else if (u.user_role === 'Advocate') roleBadgeClass = 'badge-advocate';
-            else if (u.user_role === 'Litigant') roleBadgeClass = 'badge-litigant';
-
-            let extraInfo = '—';
-            if (u.bar_enrollment_no) extraInfo = `Bar No: ${escapeHtml(u.bar_enrollment_no)}`;
-            else if (u.localization_setting) extraInfo = `Locale: ${escapeHtml(u.localization_setting)}`;
-
-            tr.innerHTML = `
-                <td class="font-mono">#${u.user_id}</td>
-                <td><strong>${escapeHtml(u.name)}</strong></td>
-                <td class="font-mono" style="color:var(--text-muted);">${escapeHtml(u.email)}</td>
-                <td><span class="rbac-badge ${roleBadgeClass}">${escapeHtml(u.user_role)}</span></td>
-                <td>${extraInfo}</td>
-                <td class="text-muted font-mono">${u.created_by_admin_id ? `Admin #${u.created_by_admin_id}` : 'Root'}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-    } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
-        showToast(err.message, 'danger');
-    }
-}
-
-// ==============================================================
-// 10. TAB 6: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
+// 10. TAB 5: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
 // ==============================================================
 async function loadDocuments() {
     const tbody = document.getElementById('docTableBody');
-    const countLabel = document.getElementById('docShowingText');
     const search = document.getElementById('docSearchInput') ? document.getElementById('docSearchInput').value.trim() : '';
     const type = document.getElementById('docFilterType') ? document.getElementById('docFilterType').value : 'ALL';
 
-    if (countLabel) countLabel.innerText = 'Loading documents...';
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Loading legal pleadings and briefs...</td></tr>';
 
     try {
         const params = new URLSearchParams();
         if (search) params.append('cnr', search);
-        if (type && type !== 'ALL') params.append('type', type);
+        if (type !== 'ALL') params.append('type', type);
         params.append('limit', '100');
 
         const res = await fetch(`/api/documents?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        renderDocumentsTable(json.data);
-        if (countLabel) countLabel.innerText = `Showing ${json.rowCount} documents`;
+        if (!json.data || json.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="table-loading">No documents on file matching filter.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        json.data.forEach(d => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(d.cnr)}')">${escapeHtml(d.cnr)}</a></td>
+                <td>Pleading #${d.doc_seq_no}</td>
+                <td><strong>${escapeHtml(d.document_type)}</strong></td>
+                <td>${formatDate(d.upload_date)}</td>
+                <td>${escapeHtml(d.advocate_name || `Advocate #${d.advocate_id}`)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     } catch (err) {
-        if (tbody) tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
-        if (countLabel) countLabel.innerText = 'Failed to load documents';
+        tbody.innerHTML = `<tr><td colspan="5" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
     }
-}
-
-function renderDocumentsTable(docs) {
-    const tbody = document.getElementById('docTableBody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    if (!docs || docs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No filed legal documents match criteria.</td></tr>';
-        return;
-    }
-
-    docs.forEach(d => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>
-                <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(d.cnr)}')">
-                    ${escapeHtml(d.cnr)}
-                </a>
-            </td>
-            <td>Doc #${d.doc_seq_no}</td>
-            <td><strong>${escapeHtml(d.document_type)}</strong></td>
-            <td>${formatDate(d.upload_date)}</td>
-            <td>${d.advocate_name ? escapeHtml(d.advocate_name) : 'Counsel'} <span class="font-mono text-muted">(#${d.advocate_id})</span></td>
-            <td class="text-right">
-                <span class="status-badge badge-published">Docket Verified</span>
-            </td>
-        `;
-        tbody.appendChild(tr);
-    });
-}
-
-function openUploadDocModal(cnr = '') {
-    const cnrInput = document.getElementById('doc_cnr');
-    const advInput = document.getElementById('doc_adv_id');
-    const typeSelect = document.getElementById('doc_type');
-
-    if (cnrInput) cnrInput.value = cnr || '';
-    if (advInput) advInput.value = currentUser.user_id ? `${currentUser.name} (#${currentUser.user_id})` : 'Advocate #1';
-    if (typeSelect) typeSelect.value = 'Petition';
-
-    openModal('uploadDocModal');
 }
 
 async function handleUploadDocSubmit(e) {
     e.preventDefault();
     const btn = document.getElementById('btnSubmitDoc');
     btn.disabled = true;
-    btn.innerText = 'Submitting Pleading...';
+    btn.innerText = 'Submitting...';
 
-    const payload = {
-        cnr: document.getElementById('doc_cnr').value.trim(),
-        document_type: document.getElementById('doc_type').value,
-        advocate_id: currentUser.user_id || 1
-    };
+    const cnr = document.getElementById('doc_cnr').value.trim();
+    const document_type = document.getElementById('doc_type').value;
 
     try {
         const res = await fetch('/api/documents', {
@@ -1272,16 +1415,16 @@ async function handleUploadDocSubmit(e) {
                 'Content-Type': 'application/json',
                 ...getAuthHeaders()
             },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ cnr, document_type })
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        showToast(`${payload.document_type} filed successfully on record.`, 'success');
+        showToast(`${document_type} filed successfully for case ${cnr}.`, 'success');
         closeModal('uploadDocModal');
         loadDocuments();
-        loadDashboardStats();
-        if (currentDossierCnr === payload.cnr) viewDossier(payload.cnr);
+        loadAlerts();
+        if (currentDossierCnr === cnr) viewDossier(cnr);
     } catch (err) {
         showToast(err.message, 'danger');
     } finally {
@@ -1291,57 +1434,88 @@ async function handleUploadDocSubmit(e) {
 }
 
 // ==============================================================
-// 11. TAB 7: VAKALATNAMA AUTHORIZATIONS (R16 - Digital Powers of Attorney)
+// 11. TAB 6: VAKALATNAMA POWERS OF ATTORNEY (R16)
 // ==============================================================
 async function loadVakalatnamas() {
     const tbody = document.getElementById('vakalatnamaTableBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Querying vakalatnama digital powers of attorney (R16)...</td></tr>';
+
+    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Loading registered powers of attorney...</td></tr>';
 
     try {
         const res = await fetch('/api/vakalatnamas', { headers: getAuthHeaders() });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
-        tbody.innerHTML = '';
         if (!json.data || json.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No Vakalatnama authorizations on file for active account.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="table-loading">No vakalatnamas on record.</td></tr>';
             return;
         }
 
+        tbody.innerHTML = '';
         json.data.forEach(v => {
             const tr = document.createElement('tr');
-            const eSignBadge = v.e_signature_flag
-                ? '<span class="status-badge badge-published">Digitally Signed</span>'
-                : '<span class="status-badge badge-draft">Physical Execution</span>';
-
             tr.innerHTML = `
-                <td class="font-mono">#${v.auth_id}</td>
+                <td class="font-mono">POA #${v.auth_id}</td>
+                <td><a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(v.cnr)}')">${escapeHtml(v.cnr)}</a></td>
+                <td>${escapeHtml(v.litigant_name || `Litigant #${v.litigant_id}`)}</td>
+                <td><strong>${escapeHtml(v.advocate_name || `Advocate #${v.advocate_id}`)}</strong></td>
                 <td>${formatDate(v.signed_date)}</td>
-                <td>${eSignBadge}</td>
-                <td>
-                    <a class="case-cnr-link font-mono" onclick="viewDossier('${escapeHtml(v.cnr)}')">
-                        ${escapeHtml(v.cnr)}
-                    </a>
-                </td>
-                <td>${v.litigant_name ? escapeHtml(v.litigant_name) : 'Litigant'} <span class="font-mono text-muted">(#${v.litigant_id})</span></td>
-                <td>${v.advocate_name ? escapeHtml(v.advocate_name) : 'Advocate'} <span class="font-mono text-muted">(#${v.advocate_id})</span></td>
+                <td>${v.e_signature_flag ? '<span class="status-badge badge-published">e-Signed Valid</span>' : '<span class="status-badge badge-draft">Physical Stamp</span>'}</td>
             `;
             tbody.appendChild(tr);
         });
     } catch (err) {
         tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
-        showToast(err.message, 'danger');
     }
 }
 
 // ==============================================================
-// 12. TAB 8: DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+// 12. TAB 7 & 8: COURT ADMINISTRATOR DESK & 18 BCNF TABLES AUDIT
 // ==============================================================
-async function loadSystemHealth() {
-    const tbody = document.getElementById('auditTableBody');
+async function loadSystemUsers() {
+    const tbody = document.getElementById('adminUserTableBody');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Auditing 18 BCNF relations and row counts from live Supabase cluster...</td></tr>';
+
+    tbody.innerHTML = '<tr><td colspan="6" class="table-loading">Loading system user accounts...</td></tr>';
+
+    try {
+        const res = await fetch('/api/users', { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        tbody.innerHTML = '';
+        json.data.forEach(u => {
+            let roleBadge = `<span class="status-badge badge-filed">${escapeHtml(u.user_role)}</span>`;
+            if (u.user_role === 'Judge') roleBadge = `<span class="status-badge badge-pending">Judge</span>`;
+            else if (u.user_role === 'Advocate') roleBadge = `<span class="status-badge badge-urgent">Advocate</span>`;
+            else if (u.user_role === 'Court Administrator') roleBadge = `<span class="status-badge badge-statutory">Admin</span>`;
+
+            let meta = '—';
+            if (u.bar_enrollment_no) meta = `<span class="font-mono">${escapeHtml(u.bar_enrollment_no)}</span>`;
+            else if (u.localization_setting) meta = `Locale: ${escapeHtml(u.localization_setting)}`;
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="font-mono">#${u.user_id}</td>
+                <td><strong>${escapeHtml(u.name)}</strong></td>
+                <td>${escapeHtml(u.email)}</td>
+                <td>${roleBadge}</td>
+                <td>${meta}</td>
+                <td>${u.created_by_admin_id ? `Admin #${u.created_by_admin_id}` : '<span class="text-muted">Root</span>'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" class="table-loading text-danger">Error: ${escapeHtml(err.message)}</td></tr>`;
+    }
+}
+
+async function loadSystemHealth() {
+    const tbody = document.getElementById('systemHealthTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Querying 18 BCNF relational entities...</td></tr>';
 
     try {
         const res = await fetch('/api/system/health', { headers: getAuthHeaders() });
@@ -1433,42 +1607,3 @@ function debounce(fn, delay) {
         timer = setTimeout(() => fn(...args), delay);
     };
 }
-
-// Automatic view trigger for headless documentation screenshots
-window.addEventListener('load', () => {
-    const params = new URLSearchParams(window.location.search);
-    const view = params.get('view');
-    if (view === 'newCase') {
-        setTimeout(() => openModal('createCaseModal'), 300);
-    } else if (view === 'drawer') {
-        setTimeout(() => viewDossier('GJAH010000012024'), 500);
-    } else if (view === 'edit') {
-        setTimeout(() => openUpdateModal('GJAH010000012024'), 400);
-    } else if (view === 'delete') {
-        setTimeout(() => openDeleteModal('GJAH010000012024', 'CC/1/2024'), 300);
-    } else if (view === 'rbac') {
-        setTimeout(() => openModal('switchUserModal'), 300);
-    } else if (view === 'judge') {
-        setTimeout(() => loginPresetUser(201, 'Judge'), 300);
-    } else if (view === 'bench') {
-        setTimeout(async () => {
-            await loginPresetUser(201, 'Judge');
-            setTimeout(() => openJudgeBenchModal('GJAH010000012024', 1, 'Arguments Heard', 'Heard learned counsel for petitioner. Ad interim stay granted on respondent notice.'), 400);
-        }, 300);
-    } else if (view === 'advocate') {
-        setTimeout(async () => {
-            await loginPresetUser(1, 'Advocate');
-            setTimeout(() => switchTab('tab-documents'), 400);
-        }, 300);
-    } else if (view === 'audit') {
-        setTimeout(async () => {
-            await loginPresetUser(401, 'Court Administrator');
-            setTimeout(() => switchTab('tab-audit'), 400);
-        }, 300);
-    } else if (view === 'admin') {
-        setTimeout(async () => {
-            await loginPresetUser(401, 'Court Administrator');
-            setTimeout(() => switchTab('tab-admin'), 400);
-        }, 300);
-    }
-});

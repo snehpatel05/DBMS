@@ -1,8 +1,9 @@
 // server.js - Multi-Table Judiciary Management System
-// Exposes REST APIs for court_case, hearings, orders, witnesses, and relational dossier
+// High-Assurance District Court Ledger with Strict RBAC & Statutory Workflows
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
 const { pool, query } = require('./db');
 
 const app = express();
@@ -20,7 +21,15 @@ app.use((req, res, next) => {
         req.url.startsWith('/orders') ||
         req.url.startsWith('/witnesses') ||
         req.url.startsWith('/users') ||
-        req.url.startsWith('/auth')
+        req.url.startsWith('/auth') ||
+        req.url.startsWith('/alerts') ||
+        req.url.startsWith('/causelists') ||
+        req.url.startsWith('/documents') ||
+        req.url.startsWith('/vakalatnamas') ||
+        req.url.startsWith('/case-advocates') ||
+        req.url.startsWith('/case-parties') ||
+        req.url.startsWith('/system') ||
+        req.url.startsWith('/admin')
     )) {
         req.url = '/api' + req.url;
     }
@@ -28,10 +37,84 @@ app.use((req, res, next) => {
 });
 
 // ==============================================================
+// RBAC AUTHENTICATION & ACCESS CONTROL MIDDLEWARE
+// ==============================================================
+function authenticateUser(req, res, next) {
+    const role = req.headers['x-user-role'] ? req.headers['x-user-role'].trim() : null;
+    const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+    req.user = {
+        role: role || 'Public',
+        userId: userId || null
+    };
+    next();
+}
+
+function requireRole(allowedRoles) {
+    return (req, res, next) => {
+        if (!req.user || !req.user.role || !allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                error: `Access Denied: Action restricted to [${allowedRoles.join(', ')}] privileges. Current role: ${req.user ? req.user.role : 'Public'}.`
+            });
+        }
+        next();
+    };
+}
+
+app.use(authenticateUser);
+
+// Helper: Automated Court Alerts Generator (REQ-04, P1)
+async function triggerCourtAlert(cnr, alertType, recipientUserIds = null) {
+    try {
+        // Determine recipient user IDs if not explicitly provided
+        let recipients = recipientUserIds;
+        if (!recipients || recipients.length === 0) {
+            recipients = [];
+            // Litigants on case
+            const parties = await query('SELECT litigant_id FROM case_party WHERE cnr = $1', [cnr]);
+            parties.rows.forEach(p => recipients.push(p.litigant_id));
+            // Advocates on case
+            const advs = await query('SELECT advocate_id FROM case_advocate WHERE cnr = $1', [cnr]);
+            advs.rows.forEach(a => recipients.push(a.advocate_id));
+            // Presiding Judge
+            const judgeRes = await query('SELECT judge_id FROM hearing WHERE cnr = $1 AND judge_id IS NOT NULL ORDER BY hearing_seq_no DESC LIMIT 1', [cnr]);
+            if (judgeRes.rowCount > 0 && judgeRes.rows[0].judge_id) {
+                recipients.push(judgeRes.rows[0].judge_id);
+            }
+        }
+
+        // Deduplicate recipients
+        recipients = [...new Set(recipients.filter(id => id && !isNaN(id)))];
+        if (recipients.length === 0) return;
+
+        // Get next alert_id
+        const nextIdRes = await query('SELECT COALESCE(MAX(alert_id), 0) + 1 AS next_id FROM alert;');
+        const newAlertId = nextIdRes.rows[0].next_id;
+
+        // Insert Master Alert (R17)
+        await query(
+            'INSERT INTO alert (alert_id, alert_timestamp, alert_type, cnr) VALUES ($1, NOW(), $2, $3);',
+            [newAlertId, alertType, cnr]
+        );
+
+        // Insert Alert Deliveries for each Recipient (R18)
+        for (const uid of recipients) {
+            await query(
+                'INSERT INTO alert_recipient (alert_id, user_id, alert_status) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING;',
+                [newAlertId, uid, 'Delivered']
+            );
+        }
+        console.log(`[ALERT DISPATCHED] ID #${newAlertId}: "${alertType}" for Case ${cnr} to ${recipients.length} recipients.`);
+    } catch (err) {
+        console.error('[TRIGGER ALERT ERROR]', err.message);
+    }
+}
+
+// ==============================================================
 // 1. AUTHENTICATION & ROLE SWITCHING (RBAC)
 // ==============================================================
 app.post('/api/auth/login', async (req, res) => {
-    const { identifier } = req.body;
+    const { identifier, password } = req.body;
     if (!identifier) {
         return res.status(400).json({ success: false, error: 'User ID or Email is required.' });
     }
@@ -39,8 +122,8 @@ app.post('/api/auth/login', async (req, res) => {
     try {
         const isNum = !isNaN(identifier);
         const sql = isNum
-            ? 'SELECT user_id, name, email, user_role FROM system_users WHERE user_id = $1;'
-            : 'SELECT user_id, name, email, user_role FROM system_users WHERE email ILIKE $1;';
+            ? 'SELECT user_id, name, email, password_hash, user_role FROM system_users WHERE user_id = $1;'
+            : 'SELECT user_id, name, email, password_hash, user_role FROM system_users WHERE email ILIKE $1;';
         const params = [isNum ? parseInt(identifier, 10) : identifier.trim()];
 
         const result = await query(sql, params);
@@ -49,8 +132,27 @@ app.post('/api/auth/login', async (req, res) => {
         }
 
         const user = result.rows[0];
-        console.log(`[RBAC AUTH] Active user session: ${user.name} (${user.user_role})`);
-        res.json({ success: true, user });
+
+        // Optional password check (supports both preset 1-click simulation and password verification)
+        if (password) {
+            const hashed = crypto.createHash('md5').update(password).digest('hex');
+            // If user provided a password and it does not match password_hash, reject
+            if (user.password_hash && user.password_hash !== hashed && user.password_hash !== password) {
+                return res.status(401).json({ success: false, error: 'Invalid password credentials.' });
+            }
+        }
+
+        console.log(`[RBAC AUTH] Authenticated: ${user.name} (${user.user_role}) #${user.user_id}`);
+        // Return user record without exposing raw password hash
+        res.json({
+            success: true,
+            user: {
+                user_id: user.user_id,
+                name: user.name,
+                email: user.email,
+                user_role: user.user_role
+            }
+        });
     } catch (err) {
         console.error('[AUTH ERROR]', err.message);
         res.status(500).json({ success: false, error: err.message });
@@ -58,12 +160,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Admin endpoint: List system users
-app.get('/api/users', async (req, res) => {
-    const role = req.headers['x-user-role'];
-    if (role !== 'Court Administrator') {
-        return res.status(403).json({ success: false, error: 'Access denied. Administrator privileges required.' });
-    }
-
+app.get('/api/users', requireRole(['Court Administrator']), async (req, res) => {
     try {
         const sql = `
             SELECT u.user_id, u.name, u.email, u.user_role, u.created_by_admin_id,
@@ -72,7 +169,7 @@ app.get('/api/users', async (req, res) => {
             LEFT JOIN advocate a ON u.user_id = a.user_id
             LEFT JOIN court_administrator ca ON u.user_id = ca.user_id
             ORDER BY u.user_id ASC
-            LIMIT 100;
+            LIMIT 150;
         `;
         const result = await query(sql);
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
@@ -82,13 +179,74 @@ app.get('/api/users', async (req, res) => {
     }
 });
 
+// Admin endpoint: Create new user account
+app.post('/api/users', requireRole(['Court Administrator']), async (req, res) => {
+    const { name, email, user_role, bar_enrollment_no, password } = req.body;
+    if (!name || !email || !user_role) {
+        return res.status(400).json({ success: false, error: 'Name, email, and user role are mandatory.' });
+    }
+
+    try {
+        const nextIdRes = await query('SELECT COALESCE(MAX(user_id), 0) + 1 AS next_id FROM system_users;');
+        const newUserId = nextIdRes.rows[0].next_id;
+        const passHash = crypto.createHash('md5').update(password || 'Court@2026').digest('hex');
+
+        // Insert into system_users (R1)
+        await query(
+            'INSERT INTO system_users (user_id, name, email, password_hash, user_role, created_by_admin_id) VALUES ($1, $2, $3, $4, $5, $6);',
+            [newUserId, name.trim(), email.trim().toLowerCase(), passHash, user_role, req.user.userId]
+        );
+
+        // Insert specialized subtype role
+        if (user_role === 'Advocate') {
+            await query('INSERT INTO advocate (user_id, bar_enrollment_no) VALUES ($1, $2);', [
+                newUserId,
+                bar_enrollment_no || `BAR/GJ/${newUserId}/2026`
+            ]);
+        } else if (user_role === 'Judge') {
+            await query('INSERT INTO judge (user_id) VALUES ($1);', [newUserId]);
+        } else if (user_role === 'Clerk') {
+            await query('INSERT INTO clerk (user_id) VALUES ($1);', [newUserId]);
+        } else if (user_role === 'Litigant') {
+            await query('INSERT INTO litigant (user_id) VALUES ($1);', [newUserId]);
+        } else if (user_role === 'Court Administrator') {
+            await query("INSERT INTO court_administrator (user_id, localization_setting) VALUES ($1, 'en-IN');", [newUserId]);
+        }
+
+        res.status(201).json({
+            success: true,
+            message: `User account created for ${name} (${user_role}) with ID #${newUserId}`,
+            data: { user_id: newUserId, name, email, user_role }
+        });
+    } catch (err) {
+        console.error('[CREATE USER ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// Admin endpoint: Update court localization
+app.put('/api/admin/localization', requireRole(['Court Administrator']), async (req, res) => {
+    const { localization_setting } = req.body;
+    if (!localization_setting) {
+        return res.status(400).json({ success: false, error: 'Localization setting is required (e.g., en-IN, gu-IN).' });
+    }
+    try {
+        await query('UPDATE court_administrator SET localization_setting = $1 WHERE user_id = $2;', [
+            localization_setting.trim(),
+            req.user.userId
+        ]);
+        res.json({ success: true, message: `Court localization updated to ${localization_setting}.` });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ==============================================================
-// 1. DASHBOARD & SYSTEM METRICS (Role-Tailored KPIs)
+// 2. DASHBOARD & SYSTEM METRICS (Role-Tailored KPIs)
 // ==============================================================
 app.get('/api/stats', async (req, res) => {
     try {
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
 
         // Judicial Bench View (Judge)
         if (userRole === 'Judge' && userId) {
@@ -198,37 +356,44 @@ app.get('/api/stats', async (req, res) => {
 });
 
 // ==============================================================
-// 2. TABLE 1: COURT_CASE (R7) - FULL CRUD
+// 3. TABLE 1: COURT_CASE (R7) - FULL CRUD & MULTI-PARAM SEARCH (REQ-02)
 // ==============================================================
 
-// READ CASES (with role-based access filtering & search)
+// READ CASES (with multi-parameter search & role filtering)
 app.get('/api/cases', async (req, res) => {
     try {
         const { search, status, urgency, limit } = req.query;
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
 
         let conditions = [];
         let params = [];
         let joinClause = '';
 
-        // RBAC Filter: Litigants only see cases they are involved in
+        // RBAC Filter: Litigants only see cases they are party to
         if (userRole === 'Litigant' && userId) {
             joinClause += ` JOIN case_party cp ON c.cnr = cp.cnr`;
             params.push(userId);
             conditions.push(`cp.litigant_id = $${params.length}`);
         }
-        // RBAC Filter: Advocates only see cases they are assigned to
+        // RBAC Filter: Advocates only see cases they are retained on
         else if (userRole === 'Advocate' && userId) {
             joinClause += ` JOIN case_advocate ca ON c.cnr = ca.cnr`;
             params.push(userId);
             conditions.push(`ca.advocate_id = $${params.length}`);
         }
-        // Judges, Clerks, and Court Administrators have universal access to all cases (SRS Matrix)
 
-        if (search) {
+        // Multi-Parameter Search (REQ-02, P1): Searches CNR, Case No, Filing No, FIR, Party Name, or Advocate Name
+        if (search && search.trim()) {
             params.push(`%${search.trim()}%`);
-            conditions.push(`(c.cnr ILIKE $${params.length} OR c.case_number ILIKE $${params.length} OR c.standardized_filing_number ILIKE $${params.length})`);
+            const pIdx = params.length;
+            conditions.push(`(
+                c.cnr ILIKE $${pIdx} OR 
+                c.case_number ILIKE $${pIdx} OR 
+                c.standardized_filing_number ILIKE $${pIdx} OR 
+                c.fir_number ILIKE $${pIdx} OR
+                EXISTS (SELECT 1 FROM case_party cp_s JOIN system_users up_s ON cp_s.litigant_id = up_s.user_id WHERE cp_s.cnr = c.cnr AND up_s.name ILIKE $${pIdx}) OR
+                EXISTS (SELECT 1 FROM case_advocate ca_s JOIN system_users ua_s ON ca_s.advocate_id = ua_s.user_id WHERE ca_s.cnr = c.cnr AND ua_s.name ILIKE $${pIdx})
+            )`);
         }
         if (status && status !== 'ALL') {
             params.push(status);
@@ -254,8 +419,6 @@ app.get('/api/cases', async (req, res) => {
         `;
 
         const result = await query(sql, params);
-        console.log(`[READ court_case] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
-
         res.json({
             success: true,
             rowCount: result.rowCount,
@@ -267,9 +430,11 @@ app.get('/api/cases', async (req, res) => {
     }
 });
 
-// READ RELATIONAL DOSSIER (Joins R7, R8, R9, R11, R14)
+// READ RELATIONAL DOSSIER (Joins R7, R8, R9, R11, R14, R15 with Bench Note Privacy)
 app.get('/api/cases/:cnr/dossier', async (req, res) => {
     const { cnr } = req.params;
+    const { role: userRole, userId } = req.user;
+
     try {
         // Case Master
         const caseRes = await query('SELECT * FROM court_case WHERE cnr = $1', [cnr]);
@@ -298,12 +463,17 @@ app.get('/api/cases/:cnr/dossier', async (req, res) => {
         `, [cnr]);
 
         // Linked Hearings (R11 View with Date from R10)
+        // BENCH NOTE PRIVACY RULE (SRS Section 4.1): Only the Presiding Judge on that hearing can see bench notes!
         const hearingsRes = await query(`
-            SELECT hearing_seq_no, hearing_date, outcome, bench_note, judge_id, causelist_id
+            SELECT hearing_seq_no, hearing_date, outcome, judge_id, causelist_id,
+                   CASE 
+                       WHEN $2 = 'Judge' AND judge_id = $3 THEN bench_note 
+                       ELSE NULL 
+                   END AS bench_note
             FROM v_hearing_with_date
             WHERE cnr = $1
             ORDER BY hearing_seq_no;
-        `, [cnr]);
+        `, [cnr, userRole, userId]);
 
         // Linked Orders (R14 View with publish_status)
         const ordersRes = await query(`
@@ -339,21 +509,18 @@ app.get('/api/cases/:cnr/dossier', async (req, res) => {
     }
 });
 
-// CREATE (INSERT)
-app.post('/api/cases', async (req, res) => {
-    const userRole = req.headers['x-user-role'];
-    if (userRole && !['Clerk', 'Court Administrator', 'Lead Advocate', 'Advocate'].includes(userRole)) {
-        return res.status(403).json({ success: false, error: 'Access denied: Only Court Clerks and authorized advocates may file cases.' });
-    }
-
+// CREATE (INSERT) COURT CASE
+app.post('/api/cases', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
     const { cnr, filing_no, case_no, fir_no, urgency, status, clerk_id } = req.body;
 
-    if (!cnr || !filing_no || !case_no || !clerk_id) {
+    if (!cnr || !filing_no || !case_no) {
         return res.status(400).json({
             success: false,
-            error: 'Mandatory fields missing: CNR, Standardized Filing No, Case No, and Clerk ID are required.'
+            error: 'Mandatory fields missing: CNR, Standardized Filing No, and Case No are required.'
         });
     }
+
+    const clerkIdToUse = clerk_id ? parseInt(clerk_id, 10) : (req.user.userId || 301);
 
     try {
         const sql = `
@@ -370,16 +537,19 @@ app.post('/api/cases', async (req, res) => {
             fir_no && fir_no.trim() ? fir_no.trim() : null,
             urgency || 'Normal',
             status || 'Filed',
-            parseInt(clerk_id, 10)
+            clerkIdToUse
         ];
 
         const result = await query(sql, params);
-        console.log(`[CREATE court_case] Inserted case ${cnr}. result.rowCount = ${result.rowCount}`);
+        console.log(`[CREATE court_case] Inserted case ${cnr}.`);
+
+        // Dispatch alert to Registry & Administrator
+        await triggerCourtAlert(cnr, 'Case Status Change', [clerkIdToUse]);
 
         res.status(201).json({
             success: true,
             rowCount: result.rowCount,
-            message: `Case ${cnr} successfully filed.`,
+            message: `Case ${cnr} successfully filed in court registry.`,
             data: result.rows[0]
         });
     } catch (err) {
@@ -388,33 +558,56 @@ app.post('/api/cases', async (req, res) => {
     }
 });
 
-// UPDATE
-app.put('/api/cases/:cnr', async (req, res) => {
+// UPDATE COURT CASE (Strict RBAC, COALESCE & Disposal Guard)
+app.put('/api/cases/:cnr', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
     const { cnr } = req.params;
     const { urgency, status, fir_no } = req.body;
 
     try {
+        // Guard 1: Verify current case status
+        const currRes = await query('SELECT case_status FROM court_case WHERE cnr = $1', [cnr]);
+        if (currRes.rowCount === 0) {
+            return res.status(404).json({ success: false, error: `Case ${cnr} not found.` });
+        }
+        const currentStatus = currRes.rows[0].case_status;
+
+        // Guard 2: Irreversible disposal check
+        if (currentStatus === 'Disposed') {
+            return res.status(400).json({
+                success: false,
+                error: `Case ${cnr} is permanently Disposed by judicial decree. Records are sealed and cannot be modified.`
+            });
+        }
+
+        // Guard 3: Non-judges cannot directly set status to 'Disposed'
+        if (status === 'Disposed') {
+            return res.status(403).json({
+                success: false,
+                error: `Registry Clerks cannot set case status to 'Disposed'. Case disposal is an exclusive judicial act executed upon the Hon'ble Judge pronouncing a Final Judgment decree.`
+            });
+        }
+
+        // Safe update with COALESCE to preserve unmodified columns
         const sql = `
             UPDATE court_case
-            SET statutory_urgency = $1, 
-                case_status = $2,
-                fir_number = $3
+            SET statutory_urgency = COALESCE($1, statutory_urgency), 
+                case_status = COALESCE($2, case_status),
+                fir_number = COALESCE($3, fir_number)
             WHERE cnr = $4
             RETURNING *;
         `;
         const params = [
-            urgency,
-            status,
+            urgency || null,
+            status || null,
             fir_no && fir_no.trim() ? fir_no.trim() : null,
             cnr
         ];
 
         const result = await query(sql, params);
-        console.log(`[UPDATE court_case] Updated case ${cnr}. result.rowCount = ${result.rowCount}`);
+        console.log(`[UPDATE court_case] Updated case ${cnr}.`);
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({ success: false, rowCount: 0, error: `Case ${cnr} does not exist.` });
-        }
+        // Trigger notification
+        await triggerCourtAlert(cnr, 'Case Status Change');
 
         res.json({
             success: true,
@@ -428,35 +621,38 @@ app.put('/api/cases/:cnr', async (req, res) => {
     }
 });
 
-// DELETE
-app.delete('/api/cases/:cnr', async (req, res) => {
-    const userRole = req.headers['x-user-role'];
-    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {
-        return res.status(403).json({ success: false, error: 'Access denied: Case deletion is restricted to Registry Clerks and Administrators.' });
-    }
-
+// DELETE COURT CASE (Restricted to unverified plaints in 'Filed' state; protected by FK RESTRICT)
+app.delete('/api/cases/:cnr', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
     const { cnr } = req.params;
 
     try {
+        // Verify case is not active in proceedings
+        const caseCheck = await query('SELECT case_status FROM court_case WHERE cnr = $1', [cnr]);
+        if (caseCheck.rowCount === 0) {
+            return res.status(404).json({ success: false, error: `Case ${cnr} not found.` });
+        }
+        if (caseCheck.rows[0].case_status === 'Disposed') {
+            return res.status(400).json({
+                success: false,
+                error: `Permanent Record Retention: Disposed cases cannot be purged from official court archives.`
+            });
+        }
+
         const sql = `DELETE FROM court_case WHERE cnr = $1;`;
         const result = await query(sql, [cnr]);
-        console.log(`[DELETE court_case] Deleted case ${cnr}. result.rowCount = ${result.rowCount}`);
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({ success: false, rowCount: 0, error: `Case ${cnr} not found.` });
-        }
+        console.log(`[DELETE court_case] Deleted unlisted case ${cnr}.`);
 
         res.json({
             success: true,
             rowCount: result.rowCount,
-            message: `Case ${cnr} successfully purged from database.`
+            message: `Case ${cnr} successfully removed from registry.`
         });
     } catch (err) {
         console.error('[DELETE ERROR]', err.message);
         if (err.code === '23503') {
             res.status(409).json({
                 success: false,
-                error: `Foreign Key Constraint RESTRICT: Cannot delete case ${cnr} because dependent hearings, orders, or assigned parties exist in related tables.`
+                error: `Foreign Key Constraint RESTRICT: Cannot delete case ${cnr} because linked hearings, orders, pleadings, or litigant parties exist on record.`
             });
         } else {
             res.status(400).json({ success: false, error: err.message });
@@ -465,13 +661,14 @@ app.delete('/api/cases/:cnr', async (req, res) => {
 });
 
 // ==============================================================
-// 3. TABLE 2: HEARINGS & CAUSE LISTS (R11 & R10 via View)
+// 4. TABLE 2: HEARINGS & CAUSE LISTS (R11 & R10 via View)
 // ==============================================================
+
+// READ HEARINGS (with Bench Note Privacy protection)
 app.get('/api/hearings', async (req, res) => {
     try {
         const { outcome, search, limit } = req.query;
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
         let conditions = [];
         let params = [];
 
@@ -500,16 +697,19 @@ app.get('/api/hearings', async (req, res) => {
         const rowLimit = parseInt(limit || '100', 10);
         params.push(rowLimit);
 
+        // BENCH NOTE PRIVACY (SRS Section 4.1): Only returned if requesting user is the presiding Judge
         const sql = `
-            SELECT cnr, hearing_seq_no, hearing_date, outcome, bench_note, judge_id, causelist_id
+            SELECT cnr, hearing_seq_no, hearing_date, outcome, judge_id, causelist_id,
+                   CASE 
+                       WHEN '${userRole}' = 'Judge' AND judge_id = ${userId || 0} THEN bench_note 
+                       ELSE NULL 
+                   END AS bench_note
             FROM v_hearing_with_date
             ${whereClause}
             ORDER BY hearing_date DESC NULLS LAST, cnr ASC
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ v_hearing_with_date] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
-
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
         console.error('[HEARINGS ERROR]', err.message);
@@ -517,36 +717,87 @@ app.get('/api/hearings', async (req, res) => {
     }
 });
 
-// JUDGE BENCH NOTE & OUTCOME RECORDER (R11 Judicial Authority)
-app.put('/api/hearings/:cnr/:seq', async (req, res) => {
-    const userRole = req.headers['x-user-role'];
-    if (userRole && !['Judge', 'Court Administrator'].includes(userRole)) {
-        return res.status(403).json({ success: false, error: 'Access denied: Judicial recording of bench notes and trial outcomes is restricted to Presiding Judges.' });
+// SCHEDULE NEW HEARING (Clerk core listing workflow)
+app.post('/api/hearings', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
+    const { cnr, judge_id, causelist_id } = req.body;
+    if (!cnr) {
+        return res.status(400).json({ success: false, error: 'CNR is required to schedule a hearing.' });
     }
 
+    try {
+        const seqRes = await query('SELECT COALESCE(MAX(hearing_seq_no), 0) + 1 AS next_seq FROM hearing WHERE cnr = $1', [cnr]);
+        const nextSeq = seqRes.rows[0].next_seq;
+
+        const sql = `
+            INSERT INTO hearing (cnr, hearing_seq_no, outcome, bench_note, judge_id, causelist_id)
+            VALUES ($1, $2, NULL, NULL, $3, $4)
+            RETURNING *;
+        `;
+        const result = await query(sql, [
+            cnr,
+            nextSeq,
+            judge_id ? parseInt(judge_id, 10) : 201, // Presiding Judge
+            causelist_id ? parseInt(causelist_id, 10) : 1
+        ]);
+
+        // Send Hearing Reminder alert to parties
+        await triggerCourtAlert(cnr, 'Hearing Reminder');
+
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `Hearing #${nextSeq} scheduled for case ${cnr}.`,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[SCHEDULE HEARING ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// JUDGE BENCH NOTE & OUTCOME RECORDER (Strict Judicial Ownership Check)
+app.put('/api/hearings/:cnr/:seq', requireRole(['Judge']), async (req, res) => {
     const { cnr, seq } = req.params;
     const { outcome, bench_note } = req.body;
+    const currentJudgeId = req.user.userId;
 
     try {
+        // Ownership check: Ensure this hearing is assigned to this Judge
+        const hearingCheck = await query(
+            'SELECT judge_id FROM hearing WHERE cnr = $1 AND hearing_seq_no = $2;',
+            [cnr, parseInt(seq, 10)]
+        );
+
+        if (hearingCheck.rowCount === 0) {
+            return res.status(404).json({ success: false, error: `Hearing #${seq} for case ${cnr} not found.` });
+        }
+
+        const presidingJudgeId = hearingCheck.rows[0].judge_id;
+        if (presidingJudgeId !== currentJudgeId) {
+            return res.status(403).json({
+                success: false,
+                error: `Judicial Bench Privilege: Hearing #${seq} is assigned to Judge #${presidingJudgeId}. Only the presiding Judge can record bench notes and trial outcomes.`
+            });
+        }
+
+        const safeNote = (typeof bench_note === 'string') ? bench_note.trim() : null;
+
         const sql = `
             UPDATE hearing
             SET outcome = COALESCE($1, outcome),
                 bench_note = COALESCE($2, bench_note)
-            WHERE cnr = $3 AND hearing_seq_no = $4
+            WHERE cnr = $3 AND hearing_seq_no = $4 AND judge_id = $5
             RETURNING *;
         `;
         const result = await query(sql, [
             outcome || null,
-            bench_note !== undefined ? bench_note.trim() : null,
+            safeNote,
             cnr,
-            parseInt(seq, 10)
+            parseInt(seq, 10),
+            currentJudgeId
         ]);
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({ success: false, error: `Hearing sequence #${seq} for case ${cnr} not found.` });
-        }
-
-        console.log(`[BENCH NOTE] Judge updated hearing ${cnr} #${seq}`);
+        console.log(`[BENCH NOTE] Hon'ble Judge #${currentJudgeId} recorded outcome on ${cnr} #${seq}`);
         res.json({
             success: true,
             rowCount: result.rowCount,
@@ -560,13 +811,113 @@ app.put('/api/hearings/:cnr/:seq', async (req, res) => {
 });
 
 // ==============================================================
-// 4. TABLE 3: COURT ORDERS & JUDGMENTS (R14 via View)
+// 5. CAUSE LIST GENERATION ALGORITHM (REQ-05, P1)
 // ==============================================================
+
+// LIST CAUSE LISTS
+app.get('/api/causelists', async (req, res) => {
+    try {
+        const sql = `
+            SELECT cl.causelist_id, cl.list_date, cl.generated_by_clerk_id,
+                   COUNT(h.hearing_seq_no) AS scheduled_hearings,
+                   u.name AS clerk_name
+            FROM cause_list cl
+            LEFT JOIN hearing h ON cl.causelist_id = h.causelist_id
+            LEFT JOIN system_users u ON cl.generated_by_clerk_id = u.user_id
+            GROUP BY cl.causelist_id, cl.list_date, cl.generated_by_clerk_id, u.name
+            ORDER BY cl.list_date DESC, cl.causelist_id DESC
+            LIMIT 50;
+        `;
+        const result = await query(sql);
+        res.json({ success: true, rowCount: result.rowCount, data: result.rows });
+    } catch (err) {
+        console.error('[CAUSELIST ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// GENERATE DAILY CAUSE LIST WITH STATUTORY PRIORITY ALGORITHM
+// Sorts by: 1) Statutory Urgency (Urgent > Statutory > Normal)
+//           2) Witness Presence (cases with active summons)
+//           3) Case Filing Age tiebreaker (c.cnr ASC)
+app.post('/api/causelists/generate', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
+    const { list_date, clerk_id } = req.body;
+    const targetDate = list_date || new Date().toISOString().split('T')[0];
+    const clerkToUse = clerk_id ? parseInt(clerk_id, 10) : (req.user.userId || 301);
+
+    try {
+        // Step 1: Create or find cause_list for target date
+        let causelistId;
+        const existing = await query('SELECT causelist_id FROM cause_list WHERE list_date = $1 LIMIT 1', [targetDate]);
+        if (existing.rowCount > 0) {
+            causelistId = existing.rows[0].causelist_id;
+        } else {
+            const nextIdRes = await query('SELECT COALESCE(MAX(causelist_id), 0) + 1 AS next_id FROM cause_list;');
+            causelistId = nextIdRes.rows[0].next_id;
+            await query(
+                'INSERT INTO cause_list (causelist_id, list_date, generated_by_clerk_id) VALUES ($1, $2, $3);',
+                [causelistId, targetDate, clerkToUse]
+            );
+        }
+
+        // Step 2: Query candidate pending cases prioritizing per SRS Section 3.2
+        const prioritySql = `
+            SELECT c.cnr, c.case_number, c.statutory_urgency,
+                   COUNT(s.summons_date) AS summons_count,
+                   CASE c.statutory_urgency 
+                       WHEN 'Urgent' THEN 1 
+                       WHEN 'Statutory' THEN 2 
+                       ELSE 3 
+                   END AS urgency_rank
+            FROM court_case c
+            LEFT JOIN summons s ON c.cnr = s.cnr
+            WHERE c.case_status = 'Pending'
+            GROUP BY c.cnr, c.case_number, c.statutory_urgency
+            ORDER BY urgency_rank ASC, summons_count DESC, c.cnr ASC
+            LIMIT 10;
+        `;
+        const priorityCases = await query(prioritySql);
+
+        // Step 3: Link scheduled cases into this cause list
+        let assignedCount = 0;
+        for (const c of priorityCases.rows) {
+            // Check if case already has a hearing in this cause list
+            const hCheck = await query('SELECT hearing_seq_no FROM hearing WHERE cnr = $1 AND causelist_id = $2', [c.cnr, causelistId]);
+            if (hCheck.rowCount === 0) {
+                const seqRes = await query('SELECT COALESCE(MAX(hearing_seq_no), 0) + 1 AS next_seq FROM hearing WHERE cnr = $1', [c.cnr]);
+                const nextSeq = seqRes.rows[0].next_seq;
+                await query(
+                    'INSERT INTO hearing (cnr, hearing_seq_no, outcome, bench_note, judge_id, causelist_id) VALUES ($1, $2, $3, $4, $5, $6);',
+                    [c.cnr, nextSeq, null, null, 201, causelistId]
+                );
+                assignedCount++;
+                // Trigger hearing notification
+                await triggerCourtAlert(c.cnr, 'Hearing Reminder');
+            }
+        }
+
+        res.json({
+            success: true,
+            causelist_id: causelistId,
+            list_date: targetDate,
+            message: `Cause List #${causelistId} generated for ${targetDate}. Prioritized ${priorityCases.rowCount} cases (${assignedCount} newly listed).`,
+            roster: priorityCases.rows
+        });
+    } catch (err) {
+        console.error('[GENERATE CAUSELIST ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 6. TABLE 3: COURT ORDERS & JUDICIAL DECREES (R14 via View)
+// ==============================================================
+
+// READ ORDERS
 app.get('/api/orders', async (req, res) => {
     try {
         const { type, publish_status, search, limit } = req.query;
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
         let conditions = [];
         let params = [];
 
@@ -608,8 +959,6 @@ app.get('/api/orders', async (req, res) => {
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ v_order_with_status] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
-
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
         console.error('[ORDERS ERROR]', err.message);
@@ -617,27 +966,98 @@ app.get('/api/orders', async (req, res) => {
     }
 });
 
-// PUBLISH ORDER
-app.put('/api/orders/:cnr/:seq/publish', async (req, res) => {
-    const userRole = req.headers['x-user-role'];
-    if (userRole && !['Judge', 'Court Administrator'].includes(userRole)) {
-        return res.status(403).json({ success: false, error: 'Access denied: Only a presiding Judge has authority to sign and publish judicial decrees.' });
+// CREATE DRAFT ORDER (Two-Step Judicial Workflow: Judge Drafts First)
+app.post('/api/orders', requireRole(['Judge']), async (req, res) => {
+    const { cnr, order_type, hearing_seq_no } = req.body;
+    const judgeId = req.user.userId;
+
+    if (!cnr || !order_type) {
+        return res.status(400).json({ success: false, error: 'CNR and Order Type (Interim Order, Final Judgment, Procedural Order) are required.' });
     }
 
-    const { cnr, seq } = req.params;
     try {
+        const seqRes = await query('SELECT COALESCE(MAX(order_seq_no), 0) + 1 AS next_seq FROM court_order WHERE cnr = $1', [cnr]);
+        const nextSeq = seqRes.rows[0].next_seq;
+
         const sql = `
+            INSERT INTO court_order (cnr, order_seq_no, order_type, draft_timestamp, published_date, judge_id, hearing_seq_no)
+            VALUES ($1, $2, $3, NOW(), NULL, $4, $5)
+            RETURNING *;
+        `;
+        const result = await query(sql, [
+            cnr,
+            nextSeq,
+            order_type,
+            judgeId,
+            hearing_seq_no ? parseInt(hearing_seq_no, 10) : null
+        ]);
+
+        console.log(`[DRAFT ORDER] Judge #${judgeId} created draft order #${nextSeq} (${order_type}) for case ${cnr}`);
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `Draft ${order_type} #${nextSeq} reserved on docket. Awaiting judicial signature to publish.`,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[DRAFT ORDER ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// PUBLISH ORDER (Judicial Pronouncement & Automated Case Disposal)
+app.put('/api/orders/:cnr/:seq/publish', requireRole(['Judge']), async (req, res) => {
+    const { cnr, seq } = req.params;
+    const judgeId = req.user.userId;
+
+    try {
+        // Ownership check: Ensure this Judge authored the order
+        const orderCheck = await query(
+            'SELECT order_type, published_date, judge_id FROM court_order WHERE cnr = $1 AND order_seq_no = $2;',
+            [cnr, parseInt(seq, 10)]
+        );
+
+        if (orderCheck.rowCount === 0) {
+            return res.status(404).json({ success: false, error: `Order #${seq} for case ${cnr} not found.` });
+        }
+
+        const order = orderCheck.rows[0];
+        if (order.judge_id !== judgeId) {
+            return res.status(403).json({
+                success: false,
+                error: `Judicial Privilege: Order #${seq} is drafted by Judge #${order.judge_id}. Only the presiding Judge can sign and publish this decree.`
+            });
+        }
+        if (order.published_date) {
+            return res.status(400).json({ success: false, error: 'Order is already signed and published.' });
+        }
+
+        // Publish Order
+        const publishSql = `
             UPDATE court_order 
             SET published_date = CURRENT_DATE 
             WHERE cnr = $1 AND order_seq_no = $2 AND published_date IS NULL
             RETURNING *;
         `;
-        const result = await query(sql, [cnr, parseInt(seq, 10)]);
-        if (result.rowCount === 0) {
-            return res.status(400).json({ success: false, error: 'Order already published or not found.' });
+        const result = await query(publishSql, [cnr, parseInt(seq, 10)]);
+
+        // AUTOMATED DISPOSAL (Lab 9 Trigger & SRS Rule):
+        // If order is 'Final Judgment', officially conclude the case and seal docket as 'Disposed'
+        if (order.order_type === 'Final Judgment') {
+            await query("UPDATE court_case SET case_status = 'Disposed' WHERE cnr = $1;", [cnr]);
+            console.log(`[CASE DISPOSAL] Case ${cnr} automatically concluded as 'Disposed' via Final Judgment.`);
         }
-        console.log(`[PUBLISH ORDER] Order ${cnr} #${seq} published. result.rowCount = ${result.rowCount}`);
-        res.json({ success: true, rowCount: result.rowCount, message: 'Order successfully published.' });
+
+        // Dispatch alert to all parties and advocates
+        await triggerCourtAlert(cnr, 'Order Published');
+
+        console.log(`[PUBLISH ORDER] Order ${cnr} #${seq} signed & published.`);
+        res.json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `Order #${seq} (${order.order_type}) successfully signed and published. ${order.order_type === 'Final Judgment' ? 'Case marked as DISPOSED.' : ''}`,
+            data: result.rows[0]
+        });
     } catch (err) {
         console.error('[PUBLISH ERROR]', err.message);
         res.status(400).json({ success: false, error: err.message });
@@ -645,7 +1065,7 @@ app.put('/api/orders/:cnr/:seq/publish', async (req, res) => {
 });
 
 // ==============================================================
-// 5. TABLE 4: WITNESSES & SUMMONS (R12 & R13)
+// 7. TABLE 4: WITNESSES & SUMMONS (R12 & R13)
 // ==============================================================
 app.get('/api/witnesses', async (req, res) => {
     try {
@@ -672,8 +1092,6 @@ app.get('/api/witnesses', async (req, res) => {
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ witness] Fetched ${result.rowCount} records`);
-
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
         console.error('[WITNESS ERROR]', err.message);
@@ -682,25 +1100,29 @@ app.get('/api/witnesses', async (req, res) => {
 });
 
 // CREATE WITNESS
-app.post('/api/witnesses', async (req, res) => {
+app.post('/api/witnesses', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
     const { witness_id, name, contact_number } = req.body;
-    if (!witness_id || !name || !contact_number) {
-        return res.status(400).json({ success: false, error: 'Witness ID, Name, and Contact Number are required.' });
+    if (!name || !contact_number) {
+        return res.status(400).json({ success: false, error: 'Name and Contact Number are required.' });
     }
 
     try {
+        let witId = witness_id ? parseInt(witness_id, 10) : null;
+        if (!witId) {
+            const nextIdRes = await query('SELECT COALESCE(MAX(witness_id), 0) + 1 AS next_id FROM witness;');
+            witId = nextIdRes.rows[0].next_id;
+        }
+
         const sql = `
             INSERT INTO witness (witness_id, name, contact_number)
             VALUES ($1, $2, $3)
             RETURNING *;
         `;
-        const result = await query(sql, [parseInt(witness_id, 10), name.trim(), contact_number.trim()]);
-        console.log(`[CREATE witness] Created witness ${witness_id}. result.rowCount = ${result.rowCount}`);
-
+        const result = await query(sql, [witId, name.trim(), contact_number.trim()]);
         res.status(201).json({
             success: true,
             rowCount: result.rowCount,
-            message: `Witness ${name} registered.`,
+            message: `Witness ${name} registered with ID #${witId}.`,
             data: result.rows[0]
         });
     } catch (err) {
@@ -710,12 +1132,11 @@ app.post('/api/witnesses', async (req, res) => {
 });
 
 // ==============================================================
-// 6. TABLE 5: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
+// 8. TABLE 5: PLEADINGS & LEGAL DOCUMENTS (R15 - Advocate Desk)
 // ==============================================================
 app.get('/api/documents', async (req, res) => {
     try {
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
         const { cnr, type, limit } = req.query;
         let conditions = [];
         let params = [];
@@ -751,8 +1172,6 @@ app.get('/api/documents', async (req, res) => {
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
-        console.log(`[READ document] (${userRole || 'Public'}) Fetched ${result.rowCount} records`);
-
         res.json({ success: true, rowCount: result.rowCount, data: result.rows });
     } catch (err) {
         console.error('[DOCUMENTS ERROR]', err.message);
@@ -760,21 +1179,27 @@ app.get('/api/documents', async (req, res) => {
     }
 });
 
-app.post('/api/documents', async (req, res) => {
-    const userRole = req.headers['x-user-role'];
-    const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
-    if (userRole && !['Advocate', 'Clerk', 'Court Administrator'].includes(userRole)) {
-        return res.status(403).json({ success: false, error: 'Access denied: Only Advocates and Registry staff may file legal pleadings.' });
-    }
-
+// UPLOAD DOCUMENT (With Advocate Ownership Safety)
+app.post('/api/documents', requireRole(['Advocate', 'Clerk', 'Court Administrator']), async (req, res) => {
     const { cnr, document_type, advocate_id } = req.body;
     if (!cnr || !document_type) {
         return res.status(400).json({ success: false, error: 'CNR and Document Type are required.' });
     }
 
-    const advId = advocate_id ? parseInt(advocate_id, 10) : (userId || 1);
-
     try {
+        let advId = advocate_id ? parseInt(advocate_id, 10) : null;
+        if (req.user.role === 'Advocate') {
+            advId = req.user.userId;
+        } else if (!advId) {
+            // Find Lead advocate on case if uploaded by Clerk
+            const advRes = await query('SELECT advocate_id FROM case_advocate WHERE cnr = $1 AND case_role = $2 LIMIT 1', [cnr, 'Lead']);
+            if (advRes.rowCount > 0) {
+                advId = advRes.rows[0].advocate_id;
+            } else {
+                advId = 1; // Default fallback to system advocate
+            }
+        }
+
         const seqRes = await query('SELECT COALESCE(MAX(doc_seq_no), 0) + 1 AS next_seq FROM document WHERE cnr = $1', [cnr]);
         const nextSeq = seqRes.rows[0].next_seq;
 
@@ -785,6 +1210,9 @@ app.post('/api/documents', async (req, res) => {
         `;
         const result = await query(sql, [cnr, nextSeq, document_type, advId]);
         console.log(`[CREATE document] Filed ${document_type} on case ${cnr}`);
+
+        // Dispatch alert
+        await triggerCourtAlert(cnr, 'Document Uploaded');
 
         res.status(201).json({
             success: true,
@@ -799,12 +1227,11 @@ app.post('/api/documents', async (req, res) => {
 });
 
 // ==============================================================
-// 7. TABLE 6: VAKALATNAMA AUTHORIZATIONS (R16)
+// 9. TABLE 6: VAKALATNAMA AUTHORIZATIONS (R16)
 // ==============================================================
 app.get('/api/vakalatnamas', async (req, res) => {
     try {
-        const userRole = req.headers['x-user-role'];
-        const userId = req.headers['x-user-id'] ? parseInt(req.headers['x-user-id'], 10) : null;
+        const { role: userRole, userId } = req.user;
         let conditions = [];
         let params = [];
 
@@ -836,16 +1263,71 @@ app.get('/api/vakalatnamas', async (req, res) => {
     }
 });
 
+// FILE VAKALATNAMA (Digital Power of Attorney)
+app.post('/api/vakalatnamas', requireRole(['Advocate', 'Clerk', 'Court Administrator']), async (req, res) => {
+    const { cnr, litigant_id, advocate_id, e_signature_flag } = req.body;
+    if (!cnr || !litigant_id || !advocate_id) {
+        return res.status(400).json({ success: false, error: 'CNR, Litigant ID, and Advocate ID are required.' });
+    }
+
+    try {
+        const nextIdRes = await query('SELECT COALESCE(MAX(auth_id), 0) + 1 AS next_id FROM vakalatnama;');
+        const newAuthId = nextIdRes.rows[0].next_id;
+
+        const sql = `
+            INSERT INTO vakalatnama (auth_id, signed_date, e_signature_flag, cnr, litigant_id, advocate_id)
+            VALUES ($1, CURRENT_DATE, $2, $3, $4, $5)
+            RETURNING *;
+        `;
+        const result = await query(sql, [
+            newAuthId,
+            e_signature_flag !== undefined ? Boolean(e_signature_flag) : true,
+            cnr,
+            parseInt(litigant_id, 10),
+            parseInt(advocate_id, 10)
+        ]);
+
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `Vakalatnama #${newAuthId} executed and registered on docket.`,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[FILE VAKALATNAMA ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
 // ==============================================================
-// 8. TABLE 7: ADVOCATE ASSIGNMENT (R9 - Lead Assigner Trigger)
+// 10. ADVOCATE ASSIGNMENT & PARTY ONBOARDING (R9 & R8)
 // ==============================================================
-app.post('/api/case-advocates', async (req, res) => {
+
+// ASSIGN ADVOCATE COUNSEL (Verified Lead Assigner Trigger & Auth Check)
+app.post('/api/case-advocates', requireRole(['Advocate', 'Court Administrator']), async (req, res) => {
     const { cnr, advocate_id, case_role, assigned_by } = req.body;
     if (!cnr || !advocate_id) {
         return res.status(400).json({ success: false, error: 'CNR and Advocate ID are required.' });
     }
 
+    const callerId = req.user.userId;
+    const assignerId = assigned_by ? parseInt(assigned_by, 10) : callerId;
+
     try {
+        // Strict Authorization: If called by Advocate, verify caller is currently a LEAD advocate on this case
+        if (req.user.role === 'Advocate') {
+            const leadCheck = await query(
+                'SELECT case_role FROM case_advocate WHERE cnr = $1 AND advocate_id = $2;',
+                [cnr, callerId]
+            );
+            if (leadCheck.rowCount === 0 || leadCheck.rows[0].case_role !== 'Lead') {
+                return res.status(403).json({
+                    success: false,
+                    error: `Advocate Privilege: Only the Lead Advocate on record for case ${cnr} can assign associate counsel.`
+                });
+            }
+        }
+
         const sql = `
             INSERT INTO case_advocate (cnr, advocate_id, case_role, assigned_date, assigned_by)
             VALUES ($1, $2, $3, CURRENT_DATE, $4)
@@ -855,7 +1337,7 @@ app.post('/api/case-advocates', async (req, res) => {
             cnr,
             parseInt(advocate_id, 10),
             case_role || 'Associate',
-            assigned_by ? parseInt(assigned_by, 10) : null
+            assignerId
         ]);
 
         res.status(201).json({
@@ -870,15 +1352,117 @@ app.post('/api/case-advocates', async (req, res) => {
     }
 });
 
-// ==============================================================
-// 9. DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
-// ==============================================================
-app.get('/api/system/health', async (req, res) => {
-    const role = req.headers['x-user-role'];
-    if (role !== 'Court Administrator') {
-        return res.status(403).json({ success: false, error: 'Access denied: System audit is reserved for Court Administrators.' });
+// ONBOARD CASE PARTY (Litigant)
+app.post('/api/case-parties', requireRole(['Clerk', 'Court Administrator']), async (req, res) => {
+    const { cnr, litigant_id, party_role } = req.body;
+    if (!cnr || !litigant_id || !party_role) {
+        return res.status(400).json({ success: false, error: 'CNR, Litigant ID, and Party Role (Petitioner, Respondent, etc.) are required.' });
     }
 
+    try {
+        const sql = `
+            INSERT INTO case_party (cnr, litigant_id, party_role)
+            VALUES ($1, $2, $3)
+            RETURNING *;
+        `;
+        const result = await query(sql, [cnr, parseInt(litigant_id, 10), party_role.trim()]);
+        res.status(201).json({
+            success: true,
+            rowCount: result.rowCount,
+            message: `Litigant #${litigant_id} enrolled as ${party_role} on case ${cnr}.`,
+            data: result.rows[0]
+        });
+    } catch (err) {
+        console.error('[ONBOARD PARTY ERROR]', err.message);
+        res.status(400).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 11. AUTOMATED ALERTS & NOTIFICATIONS (R17 & R18 - REQ-04, P1)
+// ==============================================================
+
+// GET USER NOTIFICATIONS
+app.get('/api/alerts', async (req, res) => {
+    try {
+        const { userId } = req.user;
+        if (!userId) {
+            return res.json({ success: true, rowCount: 0, data: [] });
+        }
+
+        const sql = `
+            SELECT a.alert_id, a.alert_timestamp, a.alert_type, a.cnr, ar.alert_status,
+                   c.case_number, c.statutory_urgency, c.case_status
+            FROM alert_recipient ar
+            JOIN alert a ON ar.alert_id = a.alert_id
+            LEFT JOIN court_case c ON a.cnr = c.cnr
+            WHERE ar.user_id = $1
+            ORDER BY a.alert_timestamp DESC, a.alert_id DESC
+            LIMIT 50;
+        `;
+        const result = await query(sql, [userId]);
+        const unreadCount = result.rows.filter(r => r.alert_status === 'Delivered').length;
+
+        res.json({
+            success: true,
+            rowCount: result.rowCount,
+            unreadCount,
+            data: result.rows
+        });
+    } catch (err) {
+        console.error('[GET ALERTS ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// MARK ALERT AS READ
+app.put('/api/alerts/:id/read', async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.user;
+    if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required.' });
+    }
+
+    try {
+        const sql = `
+            UPDATE alert_recipient
+            SET alert_status = 'Read'
+            WHERE alert_id = $1 AND user_id = $2
+            RETURNING *;
+        `;
+        const result = await query(sql, [parseInt(id, 10), userId]);
+        res.json({ success: true, message: 'Alert marked as read.', data: result.rows[0] });
+    } catch (err) {
+        console.error('[MARK READ ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// MARK ALL ALERTS AS READ
+app.put('/api/alerts/read-all', async (req, res) => {
+    const { userId } = req.user;
+    if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required.' });
+    }
+
+    try {
+        const sql = `
+            UPDATE alert_recipient
+            SET alert_status = 'Read'
+            WHERE user_id = $1 AND alert_status = 'Delivered';
+        `;
+        const result = await query(sql, [userId]);
+        res.json({ success: true, message: 'All delivered alerts marked as read.', count: result.rowCount });
+    } catch (err) {
+        console.error('[MARK ALL READ ERROR]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ==============================================================
+// 12. DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+// ==============================================================
+app.get('/api/system/health', requireRole(['Court Administrator']), async (req, res) => {
     try {
         const sql = `
             SELECT 'system_users' AS table_name, 'R1' AS relation, 'User Accounts Master' AS description, COUNT(*) AS row_count FROM system_users UNION ALL

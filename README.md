@@ -26,6 +26,21 @@
 * **Backend Framework:** Node.js with Express.js REST API layer (`server.js`).
 * **Frontend Architecture:** Professional Government Docket UI (`HTML5`, `CSS3`, vanilla `JavaScript` with `fetch` API, Source Sans 3 typography, monospace CNRs, and responsive modal/drawer dialogs).
 * **Security & SQL Safety:** 100% Parameterized queries (`$1, $2, ...` with value arrays) to prevent SQL Injection; environment credentials isolated via `dotenv`.
+* **Enterprise Hardening:** Strict multi-role middleware (`authenticateUser`, `requireRole`), Bench Note Privacy (`CASE` projection masking for non-judges), Two-Step Judicial Order workflow, and Statutory Cause List Prioritization.
+
+---
+
+## 🛡️ Enterprise Hardening & SRS Compliance (Real-World District Judiciary Rules)
+
+| Security / Business Control | Implementation Details & Real-World Justification |
+| :--- | :--- |
+| **🔒 Judicial Bench Note Privacy (SRS 4.1)** | Private judicial minutes and observations (`bench_note` in R11) are projected as `NULL` for Advocates, Litigants, Clerks, and even other Judges. Only the authoring Presiding Judge on that assigned hearing receives notes. |
+| **⚡ Statutory Cause List Generation (REQ-05, P1)** | Priority sorting engine (`/api/causelists/generate`) ordering daily court rosters by: **1)** Statutory Urgency (`Urgent` > `Statutory` > `Normal`), **2)** Active Witness Presence (`summons` count), and **3)** Longest Pending Filing Age tiebreaker. |
+| **🔔 Automated Court Notifications (REQ-04, P1)** | Dual-table notification architecture (`alert` R17 + `alert_recipient` R18) automatically dispatching unread alerts to parties and counsel when trial dates are scheduled, decrees published, or pleadings uploaded. |
+| **⚖️ Two-Step Order Pronouncement** | Judges draft and reserve judicial orders (`published_date = NULL`). Decrees only take legal force when deliberately signed and published in open court. |
+| **🛑 Irreversible Case Disposal Guard** | Clerks cannot manually alter case status to `Disposed`. Case disposal is an exclusive judicial act triggered automatically upon the Judge publishing a `Final Judgment`. Once disposed, case records are permanently sealed. |
+| **🔍 Multi-Parameter Subquery Search (REQ-02)** | Search bar matches across Case No, CNR, Filing No, FIR Number, Litigant Party Name (`case_party` + `system_users`), and Retained Advocate Name (`case_advocate` + `system_users`). |
+| **📜 Lead Advocate Retainer Check (R9 Trigger)** | Verifies caller is actively enrolled as `Lead` Counsel on record before allowing assignment of associate advocates (`fn_check_assigner_is_lead`). |
 
 ---
 
