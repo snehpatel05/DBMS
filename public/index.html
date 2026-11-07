@@ -131,7 +131,7 @@
                 <span class="tab-badge" id="badgeUsers">500</span>
             </button>
             <button class="nav-tab admin-only-tab" id="tabNavAudit" data-tab="tab-audit" style="display: none;">
-                18 BCNF Tables Audit
+                System Health &amp; Database Audit
                 <span class="tab-badge" id="badgeAudit">18</span>
             </button>
         </nav>
@@ -146,7 +146,7 @@
                     <div class="toolbar-left">
                         <div class="search-wrap">
                             <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" id="caseSearchInput" placeholder="Search by Case No., Filing No., or CNR..." />
+                            <input type="text" id="caseSearchInput" placeholder="Search by Case No., CNR, Litigant, Advocate, or FIR..." />
                         </div>
                         <select id="caseFilterUrgency" class="form-select">
                             <option value="ALL">All Urgencies</option>
@@ -549,7 +549,7 @@
                             </div>
                         </div>
                         <div class="rbac-badge badge-clerk">Role: Clerk (Staff)</div>
-                        <div class="rbac-card-desc">Full Registry Access: File, Edit, Delete cases, and enroll witnesses.</div>
+                        <div class="rbac-card-desc">Registry Operations: File plaints, manage docket metadata, schedule cause lists, and enroll witnesses.</div>
                     </div>
 
                     <!-- Judge -->
@@ -562,7 +562,7 @@
                             </div>
                         </div>
                         <div class="rbac-badge badge-judge">Role: Judge (Bench)</div>
-                        <div class="rbac-card-desc">Judicial Authority: View all cases, sign decrees, publish Final Judgments.</div>
+                        <div class="rbac-card-desc">Judicial Authority: View court cases, draft orders, record private bench notes, and sign decrees.</div>
                     </div>
 
                     <!-- Administrator -->
@@ -575,23 +575,36 @@
                             </div>
                         </div>
                         <div class="rbac-badge badge-admin">Role: Court Administrator</div>
-                        <div class="rbac-card-desc">System Administration: Full access plus User Accounts & Security Matrix tab.</div>
+                        <div class="rbac-card-desc">Supervisory Administration: User accounts management, court localization settings, and database audit.</div>
                     </div>
                 </div>
 
-                <div class="rbac-section-title mt-3">User Side Roles</div>
+                <div class="rbac-section-title mt-3">User Side Roles (Legal Counsel &amp; Citizens)</div>
                 <div class="rbac-role-grid">
-                    <!-- Advocate -->
+                    <!-- Lead Advocate -->
                     <div class="rbac-user-card" onclick="loginPresetUser(1, 'Advocate')">
                         <div class="rbac-card-header">
-                            <span class="user-avatar" style="background:#1D5FA8; color:#FFF;">AV</span>
+                            <span class="user-avatar" style="background:#1D5FA8; color:#FFF;">LD</span>
                             <div>
                                 <div class="rbac-card-name">Vivaan Patel</div>
                                 <div class="rbac-card-email">user1@courtmail.in</div>
                             </div>
                         </div>
-                        <div class="rbac-badge badge-advocate">Role: Advocate (Counsel)</div>
-                        <div class="rbac-card-desc">Client Legal Counsel: View assigned cases, filings, and hearing schedules.</div>
+                        <div class="rbac-badge badge-advocate">Role: Lead Advocate</div>
+                        <div class="rbac-card-desc">Senior Counsel: Retainer briefs, power to assign associate counsel, file pleadings, and client dockets.</div>
+                    </div>
+
+                    <!-- Associate Advocate -->
+                    <div class="rbac-user-card" onclick="loginPresetUser(2, 'Advocate')">
+                        <div class="rbac-card-header">
+                            <span class="user-avatar" style="background:#0284C7; color:#FFF;">AS</span>
+                            <div>
+                                <div class="rbac-card-name">Aditya Patel</div>
+                                <div class="rbac-card-email">user2@courtmail.in</div>
+                            </div>
+                        </div>
+                        <div class="rbac-badge badge-advocate" style="background:#E0F2FE; color:#0369A1;">Role: Associate Advocate</div>
+                        <div class="rbac-card-desc">Junior Counsel: Assigned under Lead Counsel; appearance briefs and case pleadings (no junior assign rights).</div>
                     </div>
 
                     <!-- Litigant -->
@@ -604,7 +617,7 @@
                             </div>
                         </div>
                         <div class="rbac-badge badge-litigant">Role: Litigant (Citizen)</div>
-                        <div class="rbac-card-desc">Party to Case: Read-only access strictly restricted to own dispute records.</div>
+                        <div class="rbac-card-desc">Party to Case: Citizen transparency access strictly restricted to own dispute records and trial dates.</div>
                     </div>
                 </div>
 
@@ -709,9 +722,9 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="clerk_in">Registering Clerk ID <span class="required">*</span></label>
-                        <input type="number" id="clerk_in" class="form-input" value="301" min="301" max="400" required />
-                        <span class="form-help">Authorized clerk IDs: 301 to 400</span>
+                        <label class="form-label" for="clerk_in">Registering Intake Clerk</label>
+                        <input type="number" id="clerk_in" class="form-input input-readonly font-mono" readonly required />
+                        <span class="form-help">Audit Trail: Automatically bound to authenticated Clerk session</span>
                     </div>
                 </div>
 

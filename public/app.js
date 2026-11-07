@@ -72,6 +72,10 @@ function applyUserRoleUI() {
     if (enrollWitBtn) enrollWitBtn.style.display = canFile ? 'inline-flex' : 'none';
     if (uploadDocBtn) uploadDocBtn.style.display = (isAdvocate || isClerk || isAdmin) ? 'inline-flex' : 'none';
 
+    // Auto-bind registering intake clerk to active authenticated session
+    const clerkIn = document.getElementById('clerk_in');
+    if (clerkIn) clerkIn.value = currentUser.user_id;
+
     // Toolbar Specific Role Actions (Cause List, Scheduling, Orders)
     const btnGenCL = document.getElementById('btnGenerateCauseListToolbar');
     const btnSchedH = document.getElementById('btnScheduleHearingToolbar');
@@ -357,10 +361,14 @@ async function loadDashboardStats() {
             const bh = document.getElementById('badgeHearings');
             const bo = document.getElementById('badgeOrders');
             const bw = document.getElementById('badgeWitnesses');
+            const bd = document.getElementById('badgeDocuments');
+            const bv = document.getElementById('badgeVakalatnama');
             if (bc) bc.innerText = json.stats.total_cases || '--';
             if (bh) bh.innerText = json.stats.total_hearings || '--';
             if (bo) bo.innerText = json.stats.published_orders || '--';
-            if (bw) bw.innerText = json.stats.total_witnesses || '--';
+            if (bw) bw.innerText = json.stats.active_summons || json.stats.total_witnesses || '--';
+            if (bd) bd.innerText = json.stats.total_documents || '--';
+            if (bv) bv.innerText = json.stats.total_vakalatnamas || '--';
         }
     } catch (err) {
         console.error('Failed to load dashboard KPIs:', err);
@@ -480,7 +488,7 @@ async function loadCases() {
         if (search) params.append('search', search);
         if (urgency !== 'ALL') params.append('urgency', urgency);
         if (status !== 'ALL') params.append('status', status);
-        params.append('limit', '100');
+        params.append('limit', '500');
 
         const res = await fetch(`/api/cases?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
@@ -557,12 +565,13 @@ function renderPaginatedCases() {
             urgencyBadge = escapeHtml(c.statutory_urgency);
         }
 
-        // Actions cell respecting RBAC
+        // Actions cell respecting RBAC and Disposed closure
+        const isDisposed = c.case_status === 'Disposed';
         let actionButtons = `<button class="btn btn-sm btn-outline" onclick="viewDossier('${escapeHtml(c.cnr)}')">View</button>`;
-        if (canEdit) {
+        if (canEdit && !isDisposed) {
             actionButtons += `<button class="btn btn-sm btn-outline" onclick="openUpdateModal('${escapeHtml(c.cnr)}')">Edit</button>`;
         }
-        if (canDelete) {
+        if (canDelete && !isDisposed && c.case_status === 'Filed') {
             actionButtons += `<button class="btn btn-sm btn-danger-outline" onclick="openDeleteModal('${escapeHtml(c.cnr)}')">Delete</button>`;
         }
 
@@ -577,7 +586,7 @@ function renderPaginatedCases() {
             <td>${c.fir_number ? escapeHtml(c.fir_number) : '<span class="text-muted">—</span>'}</td>
             <td>${urgencyBadge}</td>
             <td>${statusBadge}</td>
-            <td>Clerk #${c.registered_by_clerk_id}</td>
+            <td>${c.clerk_name ? escapeHtml(c.clerk_name) : 'Clerk'} (#${c.registered_by_clerk_id})</td>
             <td class="text-right">
                 <div class="actions-cell">
                     ${actionButtons}
@@ -846,7 +855,7 @@ async function viewDossier(cnr) {
 
         const html = `
             <div class="drawer-section">
-                <div class="drawer-section-title">Case Metadata (R7)</div>
+                <div class="drawer-section-title">Case Registry Details</div>
                 <div class="drawer-kv-grid">
                     <div class="drawer-kv-label">Standardized Filing No:</div>
                     <div class="drawer-kv-value font-mono">${escapeHtml(c.standardized_filing_number)}</div>
@@ -855,12 +864,12 @@ async function viewDossier(cnr) {
                     <div class="drawer-kv-label">FIR Reference:</div>
                     <div class="drawer-kv-value">${c.fir_number ? escapeHtml(c.fir_number) : '<span class="text-muted">—</span>'}</div>
                     <div class="drawer-kv-label">Filing Intake Clerk:</div>
-                    <div class="drawer-kv-value">Clerk #${c.registered_by_clerk_id}</div>
+                    <div class="drawer-kv-value">${c.clerk_name ? escapeHtml(c.clerk_name) : 'Clerk'} (#${c.registered_by_clerk_id})</div>
                 </div>
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Litigant Parties (R8 &amp; R1)</div>
+                <div class="drawer-section-title">Enrolled Litigant Parties</div>
                 ${(d.parties || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No litigant parties enrolled.</div>' :
                     d.parties.map(p => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -872,7 +881,7 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Assigned Advocates (R9 &amp; R1)</div>
+                <div class="drawer-section-title">Retained Legal Counsel</div>
                 ${(d.advocates || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No advocates on record.</div>' :
                     d.advocates.map(a => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -903,7 +912,7 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Case Pleadings & Exhibits (R15)</div>
+                <div class="drawer-section-title">Pleadings, Briefs & Exhibits</div>
                 ${(!d.documents || d.documents.length === 0) ? '<div class="text-muted" style="font-size:13px;">No digital pleadings filed.</div>' :
                     d.documents.map(doc => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -936,7 +945,7 @@ async function loadHearings() {
         const params = new URLSearchParams();
         if (search) params.append('search', search);
         if (outcome !== 'ALL') params.append('outcome', outcome);
-        params.append('limit', '100');
+        params.append('limit', '500');
 
         const res = await fetch(`/api/hearings?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
@@ -1010,7 +1019,7 @@ function renderHearingsTable(hearings) {
             <td>${dateStr}</td>
             <td><strong>${h.outcome ? escapeHtml(h.outcome) : '<span class="text-muted">Awaiting Outcome</span>'}</strong></td>
             ${benchNoteCell}
-            <td>Judge #${h.judge_id || 'N/A'}</td>
+            <td>${h.judge_name ? `Hon. ${escapeHtml(h.judge_name)}` : 'Judge'} (#${h.judge_id || 'N/A'})</td>
             <td>${h.causelist_id ? `List #${h.causelist_id}` : '—'}</td>
             <td class="text-right">${actionBtn}</td>
         `;
@@ -1151,7 +1160,7 @@ async function loadOrders() {
         if (search) params.append('search', search);
         if (type !== 'ALL') params.append('type', type);
         if (pub !== 'ALL') params.append('publish_status', pub);
-        params.append('limit', '100');
+        params.append('limit', '500');
 
         const res = await fetch(`/api/orders?${params.toString()}`, { headers: getAuthHeaders() });
         const json = await res.json();
@@ -1204,7 +1213,7 @@ function renderOrdersTable(orders) {
             <td>${formatDate(o.draft_timestamp)}</td>
             <td>${o.published_date ? formatDate(o.published_date) : '<span class="text-muted">—</span>'}</td>
             <td>${pubBadge}</td>
-            <td>Judge #${o.judge_id}</td>
+            <td>${o.judge_name ? `Hon. ${escapeHtml(o.judge_name)}` : 'Judge'} (#${o.judge_id})</td>
             <td class="text-right">${actionBtn}</td>
         `;
         tbody.appendChild(tr);

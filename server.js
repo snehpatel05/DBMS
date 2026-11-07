@@ -327,12 +327,16 @@ app.get('/api/stats', async (req, res) => {
             SELECT 
                 (SELECT COUNT(*) FROM court_case) AS total_cases,
                 (SELECT COUNT(*) FROM court_case WHERE case_status = 'Pending') AS pending_cases,
-                (SELECT COUNT(*) FROM court_case WHERE statutory_urgency = 'Urgent') AS urgent_cases,
+                (SELECT COUNT(*) FROM court_case WHERE statutory_urgency IN ('Urgent', 'Statutory')) AS priority_cases,
                 (SELECT COUNT(*) FROM court_case WHERE case_status = 'Disposed') AS disposed_cases,
                 (SELECT COUNT(*) FROM cause_list) AS total_causelists,
+                (SELECT COUNT(*) FROM summons) AS active_summons,
                 (SELECT COUNT(*) FROM witness) AS total_witnesses,
                 (SELECT COUNT(*) FROM hearing) AS total_hearings,
-                (SELECT COUNT(*) FROM court_order WHERE published_date IS NOT NULL) AS published_orders;
+                (SELECT COUNT(*) FROM court_order) AS total_orders,
+                (SELECT COUNT(*) FROM court_order WHERE published_date IS NOT NULL) AS published_orders,
+                (SELECT COUNT(*) FROM document) AS total_documents,
+                (SELECT COUNT(*) FROM vakalatnama) AS total_vakalatnamas;
         `;
         const result = await query(statsQuery);
         const s = result.rows[0];
@@ -341,11 +345,11 @@ app.get('/api/stats', async (req, res) => {
             role: userRole || 'Clerk',
             cards: [
                 { label: 'Total Registered Cases', value: s.total_cases, sub: 'Active registry dockets', color: '#1F4D3F' },
-                { label: 'Pending Scrutiny / Trial', value: s.pending_cases, sub: 'Awaiting judicial disposal', color: '#B7791F' },
-                { label: 'Urgent Track Filings', value: s.urgent_cases, sub: 'Statutory priority proceedings', color: '#B42318' },
+                { label: 'Pending Trial Dockets', value: s.pending_cases, sub: 'Awaiting bench trial & decree', color: '#B7791F' },
+                { label: 'Priority Track Filings', value: s.priority_cases, sub: 'Urgent & Statutory expedited matters', color: '#B42318' },
                 { label: 'Disposed Matters', value: s.disposed_cases, sub: 'Decrees pronounced & finalized', color: '#667085' },
                 { label: 'Cause Lists Issued', value: s.total_causelists, sub: 'Daily court roster calendars', color: '#1D5FA8' },
-                { label: 'Witness Summons Active', value: s.total_witnesses, sub: 'Enrolled witness repository', color: '#6941C6' }
+                { label: 'Witness Summons Active', value: s.active_summons, sub: 'Official court notices dispatched', color: '#6941C6' }
             ],
             stats: s
         });
@@ -405,13 +409,15 @@ app.get('/api/cases', async (req, res) => {
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const rowLimit = parseInt(limit || '100', 10);
+        const rowLimit = parseInt(limit || '500', 10);
         params.push(rowLimit);
 
         const sql = `
             SELECT DISTINCT c.cnr, c.standardized_filing_number, c.case_number, c.fir_number, 
-                   c.statutory_urgency, c.case_status, c.registered_by_clerk_id
+                   c.statutory_urgency, c.case_status, c.registered_by_clerk_id,
+                   u_clerk.name AS clerk_name
             FROM court_case c
+            LEFT JOIN system_users u_clerk ON c.registered_by_clerk_id = u_clerk.user_id
             ${joinClause}
             ${whereClause}
             ORDER BY c.cnr DESC
@@ -694,19 +700,21 @@ app.get('/api/hearings', async (req, res) => {
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const rowLimit = parseInt(limit || '100', 10);
+        const rowLimit = parseInt(limit || '500', 10);
         params.push(rowLimit);
 
         // BENCH NOTE PRIVACY (SRS Section 4.1): Only returned if requesting user is the presiding Judge
         const sql = `
-            SELECT cnr, hearing_seq_no, hearing_date, outcome, judge_id, causelist_id,
+            SELECT v.cnr, v.hearing_seq_no, v.hearing_date, v.outcome, v.judge_id, v.causelist_id,
+                   u_judge.name AS judge_name,
                    CASE 
-                       WHEN '${userRole}' = 'Judge' AND judge_id = ${userId || 0} THEN bench_note 
+                       WHEN '${userRole}' = 'Judge' AND v.judge_id = ${userId || 0} THEN v.bench_note 
                        ELSE NULL 
                    END AS bench_note
-            FROM v_hearing_with_date
+            FROM v_hearing_with_date v
+            LEFT JOIN system_users u_judge ON v.judge_id = u_judge.user_id
             ${whereClause}
-            ORDER BY hearing_date DESC NULLS LAST, cnr ASC
+            ORDER BY v.hearing_date DESC NULLS LAST, v.cnr ASC
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
@@ -947,15 +955,17 @@ app.get('/api/orders', async (req, res) => {
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const rowLimit = parseInt(limit || '100', 10);
+        const rowLimit = parseInt(limit || '500', 10);
         params.push(rowLimit);
 
         const sql = `
-            SELECT cnr, order_seq_no, order_type, draft_timestamp, published_date, 
-                   publish_status, judge_id, hearing_seq_no
-            FROM v_order_with_status
+            SELECT v.cnr, v.order_seq_no, v.order_type, v.draft_timestamp, v.published_date, 
+                   v.publish_status, v.judge_id, v.hearing_seq_no,
+                   u_judge.name AS judge_name
+            FROM v_order_with_status v
+            LEFT JOIN system_users u_judge ON v.judge_id = u_judge.user_id
             ${whereClause}
-            ORDER BY draft_timestamp DESC
+            ORDER BY v.draft_timestamp DESC
             LIMIT $${params.length};
         `;
         const result = await query(sql, params);
