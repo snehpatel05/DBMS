@@ -14,6 +14,7 @@
 | **🚀 Live Working Application** | **[https://dbms-iota-three.vercel.app/](https://dbms-iota-three.vercel.app/)** | ![Production Active](https://img.shields.io/badge/Vercel-Live%20Deployment-10B981?style=flat&logo=vercel) |
 | **📦 GitHub Source Repository** | **[https://github.com/snehpatel05/DBMS](https://github.com/snehpatel05/DBMS)** | ![GitHub Repo](https://img.shields.io/badge/GitHub-snehpatel05%2FDBMS-181717?style=flat&logo=github) |
 | **🗄️ PostgreSQL Cloud Instance** | `aws-0-ap-northeast-1.pooler.supabase.com:6543` | ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17.11%20(Supabase)-4169E1?style=flat&logo=postgresql) |
+| **📄 Project License** | **[MIT License](LICENSE)** | ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) |
 
 > **Default Opening State:** When opening the live URL, the system automatically lands on **Clerk Rajesh Sharma (ID: 301)** on the primary **Cases Registry** ledger with full plaint intake permissions. Role-switching to Judge (Hon'ble Justice R. K. Iyer), Advocate (Sr. Adv. Ananya Desai / Adv. Aditya Patel), Litigant (Citizen Aarav Joshi), or Court Administrator (Administrator Vikram Malhotra) can be performed anytime via the top-right profile badge.
 
