@@ -62,11 +62,13 @@ function verifySessionToken(token) {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [b64Payload, sig] = parts;
-    const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(b64Payload).digest('base64url');
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) {
-        return null;
-    }
     try {
+        const expectedSig = crypto.createHmac('sha256', SESSION_SECRET).update(b64Payload).digest('base64url');
+        const bufSig = Buffer.from(sig);
+        const bufExpected = Buffer.from(expectedSig);
+        if (bufSig.length !== bufExpected.length || !crypto.timingSafeEqual(bufSig, bufExpected)) {
+            return null;
+        }
         const payload = JSON.parse(Buffer.from(b64Payload, 'base64url').toString('utf8'));
         if (payload.exp && payload.exp < Date.now()) {
             return null; // Expired

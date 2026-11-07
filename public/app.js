@@ -1722,7 +1722,7 @@ async function loadSystemUsers() {
 }
 
 async function loadSystemHealth() {
-    const tbody = document.getElementById('systemHealthTableBody');
+    const tbody = document.getElementById('auditTableBody') || document.getElementById('systemHealthTableBody');
     if (!tbody) return;
 
     tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Querying 18 BCNF relational entities...</td></tr>';
