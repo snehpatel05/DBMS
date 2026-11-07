@@ -7,10 +7,10 @@ let pageSize = 25;
 let currentDossierCnr = null;
 let deleteTargetCnr = null;
 
-// Active User Session (Default: Registry Clerk Vivaan Dave #301)
+// Active User Session (Default: Registry Clerk Rajesh Sharma #301)
 let currentUser = {
     user_id: 301,
-    name: 'Vivaan Dave',
+    name: 'Rajesh Sharma',
     email: 'user301@courtmail.in',
     user_role: 'Clerk'
 };
@@ -18,19 +18,35 @@ let currentUser = {
 // ==============================================================
 // 1. INITIALIZATION & RBAC SETUP
 // ==============================================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     // Check if user explicitly switched roles in this browser session
     const saved = sessionStorage.getItem('court_active_user');
-    if (saved) {
+    const savedToken = sessionStorage.getItem('court_auth_token');
+    if (saved && savedToken) {
         try { currentUser = JSON.parse(saved); } catch (e) {}
     } else {
-        // Initial visit always defaults to Clerk Vivaan Dave
+        // Initial visit defaults to Clerk Rajesh Sharma with authenticated session token
         currentUser = {
             user_id: 301,
-            name: 'Vivaan Dave',
+            name: 'Rajesh Sharma',
             email: 'user301@courtmail.in',
             user_role: 'Clerk'
         };
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier: 301, password: 'Court@2026' })
+            });
+            const json = await res.json();
+            if (json.success && json.token) {
+                currentUser = json.user;
+                sessionStorage.setItem('court_auth_token', json.token);
+                sessionStorage.setItem('court_active_user', JSON.stringify(currentUser));
+            }
+        } catch (e) {
+            console.warn('Initial session auth:', e.message);
+        }
     }
 
     applyUserRoleUI();
@@ -135,7 +151,7 @@ function applyUserRoleUI() {
         if (tabDocs) { tabDocs.style.display = 'inline-flex'; tabDocs.firstChild.textContent = 'All Documents '; }
         if (tabVak) { tabVak.style.display = 'inline-flex'; tabVak.firstChild.textContent = 'All Vakalatnamas '; }
         if (tabAdmin) { tabAdmin.style.display = 'inline-flex'; tabAdmin.firstChild.textContent = 'User Accounts (Admin) '; }
-        if (tabAudit) { tabAudit.style.display = 'inline-flex'; tabAudit.firstChild.textContent = '18 BCNF Database Audit '; }
+        if (tabAudit) { tabAudit.style.display = 'inline-flex'; tabAudit.firstChild.textContent = 'Database & Relational Audit '; }
     }
 
     // Role Scope Explainer Banner
@@ -240,6 +256,13 @@ function setupEventListeners() {
     const docForm = document.getElementById('uploadDocForm');
     if (docForm) docForm.addEventListener('submit', handleUploadDocSubmit);
 
+    // Case Party & Advocate Enrollment Forms (N11)
+    const partyForm = document.getElementById('addPartyForm');
+    if (partyForm) partyForm.addEventListener('submit', handleAddParty);
+
+    const advForm = document.getElementById('addAdvocateForm');
+    if (advForm) advForm.addEventListener('submit', handleAddAdvocate);
+
     // Cause List Generation Form
     const clForm = document.getElementById('generateCauseListForm');
     if (clForm) clForm.addEventListener('submit', handleGenerateCauseList);
@@ -269,16 +292,19 @@ async function loginPresetUser(userId, expectedRole) {
         const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier: userId })
+            body: JSON.stringify({ identifier: userId, password: 'Court@2026' })
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
         currentUser = json.user;
+        if (json.token) {
+            sessionStorage.setItem('court_auth_token', json.token);
+        }
         sessionStorage.setItem('court_active_user', JSON.stringify(currentUser));
         applyUserRoleUI();
         closeModal('switchUserModal');
-        showToast(`Active session switched to ${currentUser.name} (${currentUser.user_role})`, 'success');
+        showToast(`Active session authenticated: ${currentUser.name} (${currentUser.user_role})`, 'success');
 
         currentPage = 1;
         if (currentUser.user_role === 'Judge') {
@@ -295,6 +321,7 @@ async function loginPresetUser(userId, expectedRole) {
 
 async function handleCustomLogin() {
     const val = document.getElementById('customUserIdentifier').value.trim();
+    const pwd = (document.getElementById('customUserPassword')?.value || 'Court@2026').trim();
     if (!val) {
         showToast('Please enter a User ID or Email.', 'warning');
         return;
@@ -303,12 +330,15 @@ async function handleCustomLogin() {
         const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier: val })
+            body: JSON.stringify({ identifier: val, password: pwd })
         });
         const json = await res.json();
         if (!json.success) throw new Error(json.error);
 
         currentUser = json.user;
+        if (json.token) {
+            sessionStorage.setItem('court_auth_token', json.token);
+        }
         sessionStorage.setItem('court_active_user', JSON.stringify(currentUser));
         applyUserRoleUI();
         closeModal('switchUserModal');
@@ -327,12 +357,17 @@ async function handleCustomLogin() {
     }
 }
 
-// Helper: Common request headers with active RBAC credentials
+// Helper: Common request headers with active cryptographic token and RBAC credentials
 function getAuthHeaders() {
-    return {
+    const headers = {
         'x-user-id': currentUser.user_id ? currentUser.user_id.toString() : '301',
         'x-user-role': currentUser.user_role || 'Clerk'
     };
+    const token = sessionStorage.getItem('court_auth_token');
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
 }
 
 // ==============================================================
@@ -830,6 +865,43 @@ async function viewDossier(cnr) {
             <span class="status-badge ${c.statutory_urgency === 'Urgent' ? 'badge-urgent' : 'badge-statutory'}">${escapeHtml(c.statutory_urgency)}</span>
         `;
 
+        // #68: Case Classification & Matter Stage
+        const caseType = c.fir_number ? 'Criminal Sessions Case' : 'Civil Original Suit';
+        let caseStage = 'Filing & Registration';
+        if (c.case_status === 'Disposed') {
+            caseStage = 'Disposal (Concluded)';
+        } else if (c.case_status === 'Pending') {
+            caseStage = (d.hearings && d.hearings.length > 0) ? 'Court Proceedings / Trial' : 'Listing / Scrutiny';
+        }
+
+        // #68: Next Hearing Date
+        let nextHearingText = 'None scheduled';
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const upcomingHearings = (d.hearings || [])
+            .filter(h => h.hearing_date && new Date(h.hearing_date) >= now)
+            .sort((a, b) => new Date(a.hearing_date) - new Date(b.hearing_date));
+        if (upcomingHearings.length > 0) {
+            nextHearingText = `${formatDate(upcomingHearings[0].hearing_date)} (Session #${upcomingHearings[0].hearing_seq_no})`;
+        } else if ((d.hearings || []).length > 0) {
+            const sortedH = [...d.hearings].sort((a, b) => new Date(b.hearing_date) - new Date(a.hearing_date));
+            nextHearingText = `Concluded / Last: ${formatDate(sortedH[0].hearing_date)}`;
+        }
+
+        // #68: Operative Decree (Latest published order)
+        let operativeOrderText = 'No decree published yet';
+        const pubOrders = (d.orders || [])
+            .filter(o => o.publish_status === 'Published' && o.published_date)
+            .sort((a, b) => new Date(b.published_date) - new Date(a.published_date));
+        if (pubOrders.length > 0) {
+            operativeOrderText = `${pubOrders[0].order_type} #${pubOrders[0].order_seq_no} (Signed ${formatDate(pubOrders[0].published_date)})`;
+        }
+
+        // Action permissions
+        const canManageCase = ['Clerk', 'Court Administrator'].includes(currentUser.user_role);
+        const isCaseLeadAdvocate = currentUser.user_role === 'Advocate' && (d.advocates || []).some(a => a.advocate_id === currentUser.user_id && a.case_role === 'Lead');
+        const canAssignCounsel = canManageCase || isCaseLeadAdvocate;
+
         const timelineEvents = [];
         (d.hearings || []).forEach(h => {
             timelineEvents.push({
@@ -861,6 +933,14 @@ async function viewDossier(cnr) {
                     <div class="drawer-kv-value font-mono">${escapeHtml(c.standardized_filing_number)}</div>
                     <div class="drawer-kv-label">Case Number:</div>
                     <div class="drawer-kv-value">${escapeHtml(c.case_number)}</div>
+                    <div class="drawer-kv-label">Matter Classification:</div>
+                    <div class="drawer-kv-value"><strong>${escapeHtml(caseType)}</strong></div>
+                    <div class="drawer-kv-label">Current Stage:</div>
+                    <div class="drawer-kv-value"><span class="status-badge badge-filed" style="font-size:12px;">${escapeHtml(caseStage)}</span></div>
+                    <div class="drawer-kv-label">Next Hearing Date:</div>
+                    <div class="drawer-kv-value font-mono">${escapeHtml(nextHearingText)}</div>
+                    <div class="drawer-kv-label">Operative Decree:</div>
+                    <div class="drawer-kv-value">${escapeHtml(operativeOrderText)}</div>
                     <div class="drawer-kv-label">FIR Reference:</div>
                     <div class="drawer-kv-value">${c.fir_number ? escapeHtml(c.fir_number) : '<span class="text-muted">—</span>'}</div>
                     <div class="drawer-kv-label">Filing Intake Clerk:</div>
@@ -869,7 +949,10 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Enrolled Litigant Parties</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div class="drawer-section-title" style="margin-bottom:0;">Enrolled Litigant Parties</div>
+                    ${canManageCase ? `<button class="btn btn-secondary btn-sm" onclick="openAddPartyModal('${escapeHtml(cnr)}')">+ Add Party</button>` : ''}
+                </div>
                 ${(d.parties || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No litigant parties enrolled.</div>' :
                     d.parties.map(p => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -881,7 +964,10 @@ async function viewDossier(cnr) {
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Retained Legal Counsel</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <div class="drawer-section-title" style="margin-bottom:0;">Retained Legal Counsel</div>
+                    ${canAssignCounsel ? `<button class="btn btn-secondary btn-sm" onclick="openAddAdvocateModal('${escapeHtml(cnr)}')">+ Assign Counsel</button>` : ''}
+                </div>
                 ${(d.advocates || []).length === 0 ? '<div class="text-muted" style="font-size:13px;">No advocates on record.</div>' :
                     d.advocates.map(a => `
                         <div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border-light); font-size:13px;">
@@ -927,6 +1013,121 @@ async function viewDossier(cnr) {
         container.innerHTML = html;
     } catch (err) {
         container.innerHTML = `<div class="table-loading text-danger">Failed to load case details: ${escapeHtml(err.message)}</div>`;
+    }
+}
+
+// ==============================================================
+// 6B. CASE PARTY & COUNSEL ASSIGNMENT CONTROLLERS (N11)
+// ==============================================================
+function openAddPartyModal(cnr) {
+    const targetCnr = cnr || currentDossierCnr;
+    if (!targetCnr) return;
+    const input = document.getElementById('party_cnr');
+    if (input) input.value = targetCnr;
+    const idInput = document.getElementById('party_litigant_id');
+    if (idInput) idInput.value = '';
+    const roleSel = document.getElementById('party_role_select');
+    if (roleSel) roleSel.value = 'Petitioner';
+    openModal('addPartyModal');
+}
+
+function openAddAdvocateModal(cnr) {
+    const targetCnr = cnr || currentDossierCnr;
+    if (!targetCnr) return;
+    const input = document.getElementById('adv_cnr');
+    if (input) input.value = targetCnr;
+    const idInput = document.getElementById('adv_id_in');
+    if (idInput) idInput.value = '';
+    const roleSel = document.getElementById('adv_role_select');
+    if (roleSel) roleSel.value = 'Lead';
+    toggleAssignerField();
+    openModal('addAdvocateModal');
+}
+
+function toggleAssignerField() {
+    const role = document.getElementById('adv_role_select')?.value;
+    const group = document.getElementById('adv_assigner_group');
+    const input = document.getElementById('adv_assigned_by');
+    if (group) {
+        if (role === 'Associate') {
+            group.style.display = 'block';
+            if (input && currentUser.user_role === 'Advocate') {
+                input.value = currentUser.user_id;
+            }
+        } else {
+            group.style.display = 'none';
+            if (input) input.value = '';
+        }
+    }
+}
+
+async function handleAddParty(e) {
+    e.preventDefault();
+    const cnr = document.getElementById('party_cnr').value.trim();
+    const litigant_id = parseInt(document.getElementById('party_litigant_id').value, 10);
+    const party_role = document.getElementById('party_role_select').value;
+
+    if (!cnr || isNaN(litigant_id)) {
+        showToast('Please provide valid CNR and Litigant ID.', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/case-parties', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ cnr, litigant_id, party_role })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        closeModal('addPartyModal');
+        showToast(`Party enrolled successfully (${party_role})`, 'success');
+        if (currentDossierCnr === cnr) {
+            viewDossier(cnr);
+        }
+    } catch (err) {
+        showToast(err.message, 'danger');
+    }
+}
+
+async function handleAddAdvocate(e) {
+    e.preventDefault();
+    const cnr = document.getElementById('adv_cnr').value.trim();
+    const advocate_id = parseInt(document.getElementById('adv_id_in').value, 10);
+    const case_role = document.getElementById('adv_role_select').value;
+    let assigned_by = null;
+
+    if (case_role === 'Associate') {
+        const val = parseInt(document.getElementById('adv_assigned_by').value, 10);
+        if (isNaN(val)) {
+            showToast('Associate counsel requires an assigning Lead Advocate ID.', 'warning');
+            return;
+        }
+        assigned_by = val;
+    }
+
+    if (!cnr || isNaN(advocate_id)) {
+        showToast('Please provide valid CNR and Advocate ID.', 'warning');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/case-advocates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+            body: JSON.stringify({ cnr, advocate_id, case_role, assigned_by })
+        });
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error);
+
+        closeModal('addAdvocateModal');
+        showToast(`Counsel retained successfully (${case_role} Advocate)`, 'success');
+        if (currentDossierCnr === cnr) {
+            viewDossier(cnr);
+        }
+    } catch (err) {
+        showToast(err.message, 'danger');
     }
 }
 

@@ -43,7 +43,7 @@
                 <div class="user-role-badge" id="btnUserSwitcher" onclick="openModal('switchUserModal')" title="Click to switch role or account">
                     <span class="user-avatar" id="headerAvatar">CK</span>
                     <div class="user-info-text">
-                        <span class="user-name" id="headerUserName">Vivaan Dave</span>
+                        <span class="user-name" id="headerUserName">Rajesh Sharma</span>
                         <span class="user-role-tag" id="headerUserRole">Clerk</span>
                     </div>
                     <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
@@ -449,7 +449,7 @@
             <div class="content-surface">
                 <div class="table-toolbar">
                     <div class="toolbar-left">
-                        <span style="font-weight:600; font-size:14px; color:var(--primary);">Digital Vakalatnama Authorizations (R16)</span>
+                        <span style="font-weight:600; font-size:14px; color:var(--primary);">Digital Vakalatnama Authorizations</span>
                         <span class="text-muted" style="font-size:13px;">— Client representation powers on record</span>
                     </div>
                     <div class="toolbar-right">
@@ -478,13 +478,13 @@
         </section>
 
         <!-- ==============================================================
-             TAB 8: DATABASE HEALTH & 18 BCNF TABLES AUDIT (Administrator Desk)
+             TAB 8: DATABASE HEALTH & RELATIONAL SCHEMA AUDIT (Administrator Desk)
              ============================================================== -->
         <section class="tab-pane" id="tab-audit">
             <div class="content-surface">
                 <div class="table-toolbar">
                     <div class="toolbar-left">
-                        <span style="font-weight:600; font-size:14px; color:var(--primary);">18 BCNF Relational Tables Audit</span>
+                        <span style="font-weight:600; font-size:14px; color:var(--primary);">Database & Relational Schema Audit</span>
                         <span class="text-muted" style="font-size:13px;">— Live Supabase database integrity monitor</span>
                     </div>
                     <div class="toolbar-right">
@@ -544,7 +544,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#1F4D3F; color:#FFF;">CK</span>
                             <div>
-                                <div class="rbac-card-name">Vivaan Dave</div>
+                                <div class="rbac-card-name">Clerk Rajesh Sharma</div>
                                 <div class="rbac-card-email">user301@courtmail.in</div>
                             </div>
                         </div>
@@ -557,7 +557,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#B7791F; color:#FFF;">JD</span>
                             <div>
-                                <div class="rbac-card-name">Vivaan Modi</div>
+                                <div class="rbac-card-name">Hon'ble Justice R. K. Iyer</div>
                                 <div class="rbac-card-email">user201@courtmail.in</div>
                             </div>
                         </div>
@@ -570,7 +570,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#6941C6; color:#FFF;">AD</span>
                             <div>
-                                <div class="rbac-card-name">Vivaan Patel</div>
+                                <div class="rbac-card-name">Administrator Vikram Malhotra</div>
                                 <div class="rbac-card-email">user401@courtmail.in</div>
                             </div>
                         </div>
@@ -586,7 +586,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#1D5FA8; color:#FFF;">LD</span>
                             <div>
-                                <div class="rbac-card-name">Vivaan Patel</div>
+                                <div class="rbac-card-name">Sr. Adv. Ananya Desai</div>
                                 <div class="rbac-card-email">user1@courtmail.in</div>
                             </div>
                         </div>
@@ -599,7 +599,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#0284C7; color:#FFF;">AS</span>
                             <div>
-                                <div class="rbac-card-name">Aditya Patel</div>
+                                <div class="rbac-card-name">Adv. Aditya Patel</div>
                                 <div class="rbac-card-email">user2@courtmail.in</div>
                             </div>
                         </div>
@@ -612,7 +612,7 @@
                         <div class="rbac-card-header">
                             <span class="user-avatar" style="background:#667085; color:#FFF;">LT</span>
                             <div>
-                                <div class="rbac-card-name">Vivaan Joshi</div>
+                                <div class="rbac-card-name">Citizen Aarav Joshi</div>
                                 <div class="rbac-card-email">user101@courtmail.in</div>
                             </div>
                         </div>
@@ -622,11 +622,13 @@
                 </div>
 
                 <div class="mt-3" style="border-top:1px solid var(--border); padding-top:14px;">
-                    <label class="form-label">Or Custom Login via User ID or Email:</label>
-                    <div style="display:flex; gap:8px;">
-                        <input type="text" id="customUserIdentifier" class="form-input" placeholder="e.g. 102 or user102@courtmail.in" />
-                        <button type="button" class="btn btn-secondary" onclick="handleCustomLogin()">Switch</button>
+                    <label class="form-label">Or Custom Login via User ID or Email &amp; Password:</label>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <input type="text" id="customUserIdentifier" class="form-input" placeholder="User ID or Email (e.g. 101, 301, user201@courtmail.in)" />
+                        <input type="password" id="customUserPassword" class="form-input" placeholder="Password (default: Court@2026)" value="Court@2026" />
+                        <button type="button" class="btn btn-secondary" onclick="handleCustomLogin()">Authenticate &amp; Switch Session</button>
                     </div>
+                    <span class="form-help" style="margin-top:4px; display:block;">Default credentials for seeded accounts: <code>Court@2026</code></span>
                 </div>
             </div>
             <div class="modal-footer">
@@ -867,7 +869,7 @@
                     <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
                     <div>
                         <h2 class="modal-title">Judicial Bench Proceedings</h2>
-                        <span class="modal-desc">Record official hearing outcome and confidential bench notes (R11)</span>
+                        <span class="modal-desc">Record official hearing outcome and confidential bench notes</span>
                     </div>
                 </div>
                 <button class="modal-close" onclick="closeModal('judgeBenchModal')">&times;</button>
@@ -894,7 +896,7 @@
                     <div class="form-group">
                         <label class="form-label" for="bench_note">Private Judicial Bench Notes</label>
                         <textarea id="bench_note" class="form-input" rows="4" placeholder="Enter judicial observations, witness demeanor notes, or trial directions..."></textarea>
-                        <span class="form-help">Bench notes are part of Relation R11 and retained for appellate review</span>
+                        <span class="form-help">Bench notes are retained for appellate review</span>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -915,7 +917,7 @@
                     <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
                     <div>
                         <h2 class="modal-title">File Legal Pleading / Document</h2>
-                        <span class="modal-desc">Submit formal petition, affidavit, or evidentiary exhibit (R15)</span>
+                        <span class="modal-desc">Submit formal petition, affidavit, or evidentiary exhibit</span>
                     </div>
                 </div>
                 <button class="modal-close" onclick="closeModal('uploadDocModal')">&times;</button>
@@ -1028,7 +1030,7 @@
                     <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
                     <div>
                         <h2 class="modal-title">Schedule Court Hearing</h2>
-                        <span class="modal-desc">Calendar a new bench trial appearance on a case docket (R11)</span>
+                        <span class="modal-desc">Calendar a new bench trial appearance on a case docket</span>
                     </div>
                 </div>
                 <button class="modal-close" onclick="closeModal('scheduleHearingModal')">&times;</button>
@@ -1107,6 +1109,99 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('draftOrderModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="btnSubmitDraftOrder">Reserve Draft Order</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- ==============================================================
+         CENTRED MODAL: ENROLL CASE PARTY (LITIGANT)
+         ============================================================== -->
+    <div class="modal-overlay" id="addPartyModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Enroll Case Party (Litigant)</h2>
+                        <span class="modal-desc">Associate a litigant party to this case docket</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('addPartyModal')">&times;</button>
+            </div>
+            <form id="addPartyForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="party_cnr">Target Case CNR <span class="required">*</span></label>
+                        <input type="text" id="party_cnr" class="form-input font-mono input-readonly" readonly required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="party_litigant_id">Litigant ID <span class="required">*</span></label>
+                        <input type="number" id="party_litigant_id" class="form-input" placeholder="e.g. 101, 102" min="1" required />
+                        <span class="form-help">Enter valid registered Litigant User ID (e.g. 101-200)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="party_role_select">Party Role <span class="required">*</span></label>
+                        <select id="party_role_select" class="form-select w-100" required>
+                            <option value="Petitioner">Petitioner</option>
+                            <option value="Respondent">Respondent</option>
+                            <option value="Co-Petitioner">Co-Petitioner</option>
+                            <option value="Co-Respondent">Co-Respondent</option>
+                            <option value="Third Party">Third Party</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addPartyModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitAddParty">Enroll Party</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==============================================================
+         CENTRED MODAL: ASSIGN CASE ADVOCATE (COUNSEL)
+         ============================================================== -->
+    <div class="modal-overlay" id="addAdvocateModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <div class="modal-title-with-emblem">
+                    <img src="logo.png" alt="District Court Emblem" class="modal-emblem" />
+                    <div>
+                        <h2 class="modal-title">Assign Legal Counsel (Advocate)</h2>
+                        <span class="modal-desc">Retain Lead or Associate Counsel for this case</span>
+                    </div>
+                </div>
+                <button class="modal-close" onclick="closeModal('addAdvocateModal')">&times;</button>
+            </div>
+            <form id="addAdvocateForm">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label" for="adv_cnr">Target Case CNR <span class="required">*</span></label>
+                        <input type="text" id="adv_cnr" class="form-input font-mono input-readonly" readonly required />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="adv_id_in">Advocate ID <span class="required">*</span></label>
+                        <input type="number" id="adv_id_in" class="form-input" placeholder="e.g. 1, 2" min="1" required />
+                        <span class="form-help">Enter valid registered Advocate User ID (e.g. 1-100)</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="adv_role_select">Case Counsel Role <span class="required">*</span></label>
+                        <select id="adv_role_select" class="form-select w-100" required onchange="toggleAssignerField()">
+                            <option value="Lead">Lead Counsel</option>
+                            <option value="Associate">Associate Counsel</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="adv_assigner_group" style="display:none;">
+                        <label class="form-label" for="adv_assigned_by">Assigning Lead Advocate ID <span class="required">*</span></label>
+                        <input type="number" id="adv_assigned_by" class="form-input" placeholder="Lead Advocate ID on record" min="1" />
+                        <span class="form-help">Associate counsel must be assigned by an existing Lead Advocate</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('addAdvocateModal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="btnSubmitAddAdvocate">Assign Counsel</button>
                 </div>
             </form>
         </div>

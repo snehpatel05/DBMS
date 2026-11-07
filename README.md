@@ -12,10 +12,10 @@
 | Resource | Direct URL Link | Status |
 | :--- | :--- | :--- |
 | **🚀 Live Working Application** | **[https://dbms-iota-three.vercel.app/](https://dbms-iota-three.vercel.app/)** | ![Production Active](https://img.shields.io/badge/Vercel-Live%20Deployment-10B981?style=flat&logo=vercel) |
-| **📦 GitHub Source Repository** | **[https://github.com/snehpatel05/DBMS](https://github.com/snehpatel05/DBMS)** | ![GitHub Repo](https://img.shields.io/badge/GitHub-snehpatel05%2FDBMS-181717?style=flat&logo=github) |
+| **📦 GitHub Source Repositories** | **[havishtrivedi07/DBMS](https://github.com/havishtrivedi07/DBMS)** (Active Primary) • **[snehpatel05/DBMS](https://github.com/snehpatel05/DBMS)** (Fork Upstream) | ![GitHub Repo](https://img.shields.io/badge/GitHub-havishtrivedi07%2FDBMS-181717?style=flat&logo=github) |
 | **🗄️ PostgreSQL Cloud Instance** | `aws-0-ap-northeast-1.pooler.supabase.com:6543` | ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17.11%20(Supabase)-4169E1?style=flat&logo=postgresql) |
 
-> **Default Opening State:** When opening the live URL, the system automatically lands on **Clerk Vivaan Dave (ID: 301)** on the primary **Cases Registry** ledger with full plaint intake permissions. Role-switching to Judge, Advocate, Litigant, or Court Administrator can be performed anytime via the top-right profile badge.
+> **Default Opening State:** When opening the live URL, the system automatically lands on **Clerk Rajesh Sharma (ID: 301)** on the primary **Cases Registry** ledger with full plaint intake permissions. Role-switching to Judge (Hon'ble Justice R. K. Iyer), Advocate (Sr. Adv. Ananya Desai / Adv. Aditya Patel), Litigant (Citizen Aarav Joshi), or Court Administrator (Administrator Vikram Malhotra) can be performed anytime via the top-right profile badge.
 
 ---
 
@@ -25,7 +25,7 @@
 * **Database Driver:** `pg` (`node-postgres` v8.11+) connection pool with SSL TLS termination.
 * **Backend Framework:** Node.js with Express.js REST API layer (`server.js`).
 * **Frontend Architecture:** Professional Government Docket UI (`HTML5`, `CSS3`, vanilla `JavaScript` with `fetch` API, Source Sans 3 typography, monospace CNRs, and responsive modal/drawer dialogs).
-* **Security & SQL Safety:** 100% Parameterized queries (`$1, $2, ...` with value arrays) to prevent SQL Injection; environment credentials isolated via `dotenv`.
+* **Security & SQL Safety:** 100% Parameterized queries (`$1, $2, ...` with value arrays across all endpoints) to completely eliminate SQL Injection; cryptographic HMAC-SHA256 session token authentication (`authenticateUser`); environment credentials isolated via `dotenv`.
 * **Enterprise Hardening:** Strict multi-role middleware (`authenticateUser`, `requireRole`), Bench Note Privacy (`CASE` projection masking for non-judges), Two-Step Judicial Order workflow, and Statutory Cause List Prioritization.
 
 ---
@@ -46,11 +46,11 @@
 
 # (A) Database Connectivity Code
 
-### 1. Connection Pool Initialization (`server.js`)
-The database connection pool is created using the official `pg` (`node-postgres`) driver. It utilizes a pooled client architecture with SSL configuration for secure communication with Supabase:
+### 1. Connection Pool Initialization (`db.js`)
+The database connection pool is created in `db.js` using the official `pg` (`node-postgres`) driver. It utilizes a pooled client architecture with SSL TLS configuration for secure communication with Supabase:
 
 ```javascript
-// server.js - PostgreSQL Connection Pool Setup
+// db.js - PostgreSQL Connection Pool Setup
 require('dotenv').config();
 const { Pool } = require('pg');
 
@@ -59,9 +59,9 @@ const pool = new Pool({
     ssl: {
         rejectUnauthorized: false // Required for Supabase IPv4 transaction pooler over TLS
     },
-    max: 20,                       // Maintain up to 20 concurrent connections in pool
-    idleTimeoutMillis: 30000,      // Close idle clients after 30 seconds
-    connectionTimeoutMillis: 10000 // Timeout acquisition after 10 seconds
+    max: 20,                      // Maintain up to 20 concurrent connections in pool
+    idleTimeoutMillis: 30000,     // Close idle clients after 30 seconds
+    connectionTimeoutMillis: 2000 // Timeout acquisition after 2 seconds
 });
 
 // Pool lifecycle logging
@@ -72,6 +72,8 @@ pool.on('connect', () => {
 pool.on('error', (err) => {
     console.error('[DATABASE POOL ERROR] Unexpected client error:', err.message);
 });
+
+module.exports = { pool };
 ```
 
 ### 2. Centralized Query Helper Function
@@ -99,7 +101,7 @@ Per security requirements, raw passwords are never hardcoded or pushed to versio
 ```ini
 # .env Configuration (Sensitive Credentials Isolated)
 PORT=3000
-DATABASE_URL=postgresql://postgres.xxx:[PASSWORD-MASKED]@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://postgres.snehpatel:[PASSWORD-MASKED]@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
 NODE_ENV=production
 ```
 
@@ -156,7 +158,7 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 | Item | What to include |
 | :--- | :--- |
 | **SQL** | Exact parameterized `INSERT` statement with `$1..$7` placeholders:<br>```sql<br>INSERT INTO court_case (<br>    cnr, standardized_filing_number, case_number,<br>    fir_number, statutory_urgency, case_status, registered_by_clerk_id<br>)<br>VALUES ($1, $2, $3, $4, $5, $6, $7)<br>RETURNING cnr, case_number, statutory_urgency, case_status;<br>``` |
-| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.post('/api/cases', async (req, res) => {<br>    const userRole = req.headers['x-user-role'];<br>    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {<br>        return res.status(403).json({ success: false, error: 'Access denied: Only Clerks may file plaints.' });<br>    }<br>    const { cnr, standardized_filing_number, case_number, fir_number, statutory_urgency, case_status, registered_by_clerk_id } = req.body;<br>    const sql = `<br>        INSERT INTO court_case (<br>            cnr, standardized_filing_number, case_number,<br>            fir_number, statutory_urgency, case_status, registered_by_clerk_id<br>        )<br>        VALUES ($1, $2, $3, $4, $5, $6, $7)<br>        RETURNING *;<br>    `;<br>    const params = [cnr, standardized_filing_number, case_number, fir_number, statutory_urgency, case_status, registered_by_clerk_id];<br>    const result = await query(sql, params);<br>    res.status(201).json({ success: true, rowCount: result.rowCount, data: result.rows[0] });<br>});<br>``` |
+| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.post('/api/cases', authenticateUser, requireRole(['Clerk']), async (req, res) => {<br>    const { cnr, standardized_filing_number, case_number, fir_number, statutory_urgency, case_status } = req.body;<br>    const clerkId = req.userId || 301;<br>    const sql = `<br>        INSERT INTO court_case (<br>            cnr, standardized_filing_number, case_number,<br>            fir_number, statutory_urgency, case_status, registered_by_clerk_id<br>        )<br>        VALUES ($1, $2, $3, $4, $5, $6, $7)<br>        RETURNING *;<br>    `;<br>    const params = [cnr, standardized_filing_number, case_number, fir_number || null, statutory_urgency, case_status || 'Filed', clerkId];<br>    const result = await pool.query(sql, params);<br>    res.status(201).json({ success: true, rowCount: result.rowCount, data: result.rows[0] });<br>});<br>``` |
 | **Output** | **Terminal Execution Log (`result.rowCount = 1`):**<br>```text<br>[INSERT RESULT] Rows affected (result.rowCount) = 1<br>Inserted Record: {<br>  cnr: 'GJAH018888882026',<br>  case_number: 'CC/888/2026',<br>  statutory_urgency: 'Normal',<br>  case_status: 'Filed'<br>}<br>``` |
 
 ---
@@ -166,7 +168,7 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 | Item | What to include |
 | :--- | :--- |
 | **SQL** | Exact parameterized `SELECT` statement with search, filter, and pagination placeholders:<br>```sql<br>SELECT cnr, standardized_filing_number, case_number, fir_number,<br>       statutory_urgency, case_status, registered_by_clerk_id<br>FROM court_case<br>WHERE ($1::text IS NULL OR statutory_urgency = $1)<br>  AND ($2::text IS NULL OR case_status = $2)<br>  AND ($3::text IS NULL OR cnr ILIKE $3 OR case_number ILIKE $3)<br>ORDER BY cnr ASC<br>LIMIT $4;<br>``` |
-| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.get('/api/cases', async (req, res) => {<br>    const { urgency, status, search, limit } = req.query;<br>    let conditions = [];<br>    let params = [];<br>    if (urgency && urgency !== 'ALL') {<br>        params.push(urgency);<br>        conditions.push(`statutory_urgency = $${params.length}`);<br>    }<br>    if (status && status !== 'ALL') {<br>        params.push(status);<br>        conditions.push(`case_status = $${params.length}`);<br>    }<br>    if (search) {<br>        params.push(`%${search.trim()}%`);<br>        conditions.push(`(cnr ILIKE $${params.length} OR case_number ILIKE $${params.length})`);<br>    }<br>    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';<br>    params.push(parseInt(limit || '100', 10));<br>    const sql = `SELECT * FROM court_case ${whereClause} ORDER BY cnr ASC LIMIT $${params.length};`;<br>    const result = await query(sql, params);<br>    res.json({ success: true, rowCount: result.rowCount, data: result.rows });<br>});<br>``` |
+| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.get('/api/cases', authenticateUser, async (req, res) => {<br>    const { urgency, status, search, limit, offset } = req.query;<br>    let conditions = [];<br>    let params = [];<br>    if (urgency && urgency !== 'ALL') {<br>        params.push(urgency);<br>        conditions.push(`c.statutory_urgency = $${params.length}`);<br>    }<br>    if (status && status !== 'ALL') {<br>        params.push(status);<br>        conditions.push(`c.case_status = $${params.length}`);<br>    }<br>    if (search) {<br>        params.push(`%${search.trim()}%`);<br>        const idx = params.length;<br>        conditions.push(`(<br>            c.cnr ILIKE $${idx} OR c.case_number ILIKE $${idx} OR c.standardized_filing_number ILIKE $${idx}<br>            OR (c.fir_number IS NOT NULL AND c.fir_number ILIKE $${idx})<br>            OR EXISTS (SELECT 1 FROM case_party cp JOIN system_users su ON cp.litigant_id = su.user_id WHERE cp.cnr = c.cnr AND su.name ILIKE $${idx})<br>            OR EXISTS (SELECT 1 FROM case_advocate ca JOIN system_users su ON ca.advocate_id = su.user_id WHERE ca.cnr = c.cnr AND su.name ILIKE $${idx})<br>        )`);<br>    }<br>    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';<br>    params.push(parseInt(limit || '25', 10));<br>    const limitIdx = params.length;<br>    params.push(parseInt(offset || '0', 10));<br>    const offsetIdx = params.length;<br>    const sql = `SELECT c.* FROM court_case c ${whereClause} ORDER BY c.cnr ASC LIMIT $${limitIdx} OFFSET $${offsetIdx};`;<br>    const result = await pool.query(sql, params);<br>    res.json({ success: true, rowCount: result.rowCount, data: result.rows });<br>});<br>``` |
 | **Output** | **Terminal Execution Log (`result.rowCount = 1`):**<br>```text<br>[SELECT RESULT] Rows fetched (result.rowCount) = 1<br>Retrieved Row: {<br>  cnr: 'GJAH018888882026',<br>  standardized_filing_number: 'SFN-2026-008888',<br>  case_number: 'CC/888/2026',<br>  fir_number: 'FIR/0088/2026',<br>  statutory_urgency: 'Normal',<br>  case_status: 'Filed',<br>  registered_by_clerk_id: 301<br>}<br>``` |
 
 ---
@@ -176,7 +178,7 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 | Item | What to include |
 | :--- | :--- |
 | **SQL** | Exact parameterized `UPDATE` statement with mandatory `WHERE` clause:<br>```sql<br>UPDATE court_case<br>SET statutory_urgency = COALESCE($1, statutory_urgency),<br>    case_status = COALESCE($2, case_status),<br>    fir_number = COALESCE($3, fir_number)<br>WHERE cnr = $4<br>RETURNING cnr, case_number, statutory_urgency, case_status, fir_number;<br>``` |
-| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.put('/api/cases/:cnr', async (req, res) => {<br>    const userRole = req.headers['x-user-role'];<br>    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {<br>        return res.status(403).json({ success: false, error: 'Access denied: Metadata modification restricted to Registry Staff.' });<br>    }<br>    const { cnr } = req.params;<br>    const { urgency, status, fir_no } = req.body;<br>    const sql = `<br>        UPDATE court_case<br>        SET statutory_urgency = COALESCE($1, statutory_urgency),<br>            case_status = COALESCE($2, case_status),<br>            fir_number = COALESCE($3, fir_number)<br>        WHERE cnr = $4<br>        RETURNING *;<br>    `;<br>    const result = await query(sql, [urgency || null, status || null, fir_no || null, cnr]);<br>    if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Case not found' });<br>    res.json({ success: true, rowCount: result.rowCount, data: result.rows[0] });<br>});<br>``` |
+| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.put('/api/cases/:cnr', authenticateUser, requireRole(['Clerk']), async (req, res) => {<br>    const { cnr } = req.params;<br>    const { urgency, status, fir_no } = req.body;<br>    const currentCase = await pool.query('SELECT case_status FROM court_case WHERE cnr = $1', [cnr]);<br>    if (currentCase.rowCount === 0) return res.status(404).json({ success: false, error: 'Case not found' });<br>    if (currentCase.rows[0].case_status === 'Disposed') {<br>        return res.status(400).json({ success: false, error: 'Cannot modify a Disposed case.' });<br>    }<br>    if (status === 'Disposed') {<br>        return res.status(400).json({ success: false, error: 'Case disposal is exclusive to Final Judgment publication.' });<br>    }<br>    if (currentCase.rows[0].case_status === 'Pending' && status === 'Filed') {<br>        return res.status(400).json({ success: false, error: 'Cannot revert a Pending case back to Filed.' });<br>    }<br>    const sql = `<br>        UPDATE court_case<br>        SET statutory_urgency = COALESCE($1, statutory_urgency),<br>            case_status = COALESCE($2, case_status),<br>            fir_number = COALESCE($3, fir_number)<br>        WHERE cnr = $4<br>        RETURNING *;<br>    `;<br>    const result = await pool.query(sql, [urgency || null, status || null, fir_no || null, cnr]);<br>    res.json({ success: true, rowCount: result.rowCount, data: result.rows[0] });<br>});<br>``` |
 | **Output** | **Terminal Execution Log (`result.rowCount = 1`):**<br>```text<br>[UPDATE RESULT] Rows affected (result.rowCount) = 1<br>Updated Record State: {<br>  cnr: 'GJAH018888882026',<br>  case_number: 'CC/888/2026',<br>  statutory_urgency: 'Urgent',<br>  case_status: 'Pending',<br>  fir_number: 'FIR/0088/2026-REV1'<br>}<br>``` |
 
 ---
@@ -186,7 +188,7 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 | Item | What to include |
 | :--- | :--- |
 | **SQL** | Exact parameterized `DELETE` statement with mandatory `WHERE` clause:<br>```sql<br>DELETE FROM court_case<br>WHERE cnr = $1<br>RETURNING cnr;<br>``` |
-| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.delete('/api/cases/:cnr', async (req, res) => {<br>    const userRole = req.headers['x-user-role'];<br>    if (userRole && !['Clerk', 'Court Administrator'].includes(userRole)) {<br>        return res.status(403).json({ success: false, error: 'Access denied: Purging cases restricted to Clerks and Administrators.' });<br>    }<br>    const { cnr } = req.params;<br>    try {<br>        const sql = `DELETE FROM court_case WHERE cnr = $1 RETURNING cnr;`;<br>        const result = await query(sql, [cnr]);<br>        if (result.rowCount === 0) return res.status(404).json({ success: false, error: 'Case not found' });<br>        res.json({ success: true, rowCount: result.rowCount, message: `Case ${cnr} purged.` });<br>    } catch (err) {<br>        if (err.code === '23503') {<br>            res.status(409).json({ success: false, error: `Foreign Key RESTRICT: Cannot delete case ${cnr} with active hearings or party records.` });<br>        } else {<br>            res.status(400).json({ success: false, error: err.message });<br>        }<br>    }<br>});<br>``` |
+| **Function** | **Node.js Express Route Handler (`server.js`):**<br>```javascript<br>app.delete('/api/cases/:cnr', authenticateUser, requireRole(['Clerk']), async (req, res) => {<br>    const { cnr } = req.params;<br>    const caseRow = await pool.query('SELECT case_status FROM court_case WHERE cnr = $1', [cnr]);<br>    if (caseRow.rowCount === 0) return res.status(404).json({ success: false, error: 'Case not found' });<br>    if (caseRow.rows[0].case_status !== 'Filed') {<br>        return res.status(400).json({ success: false, error: 'Only cases in Filed status may be deleted.' });<br>    }<br>    const result = await pool.query('DELETE FROM court_case WHERE cnr = $1 RETURNING cnr;', [cnr]);<br>    res.json({ success: true, rowCount: result.rowCount, message: `Case ${cnr} purged successfully.` });<br>});<br>``` |
 | **Output** | **Terminal Execution Log (`result.rowCount = 1` & Integrity Test):**<br>```text<br>[DELETE RESULT] Rows affected (result.rowCount) = 1<br>Deleted Case Record: GJAH018888882026<br><br>[FK RESTRICT VERIFIED] Error code 23503: Deletion blocked by database engine.<br>Detail: Key (cnr)=(GJAH010000012024) is still referenced from table "case_party".<br>``` |
 
 ---
@@ -238,7 +240,7 @@ Allows the grader to switch between **Administration Roles** (Clerk, Judge, Cour
 
 ---
 
-### 7. Judge Judicial Bench Workspace (`Hon'ble Judge Vivaan Modi #201`)
+### 7. Judge Judicial Bench Workspace (`Hon'ble Justice R. K. Iyer #201`)
 Judge-specific interface displaying presiding trial sessions, draft orders awaiting judicial signature, and bench proceedings:
 ![Judge Bench View](docs/screenshots/07_judge_bench_view.png)
 
@@ -250,8 +252,8 @@ Exclusive modal for judges to record private observations, trial directions, and
 
 ---
 
-### 9. 18 BCNF Relational Tables Live Database Audit (Court Administrator)
-Administrator monitor querying all 18 BCNF tables directly on Supabase, verifying live tuple counts and Boyce-Codd Normal Form compliance:
+### 9. Database & Relational Schema Live Audit (Court Administrator)
+Administrator monitor querying all 18 BCNF relational entities directly on Supabase, verifying live tuple counts, foreign key integrity, and Boyce-Codd Normal Form compliance:
 ![18 BCNF Tables Audit](docs/screenshots/10_admin_18_bcnf_audit.png)
 
 ---
