@@ -198,9 +198,19 @@ Each subsection below presents the exact SQL query with placeholders, the Expres
 ---
 
 ### 5. Automated CRUD Suite Verification Evidence
-The complete CRUD lifecycle verification test was executed against our live Supabase PostgreSQL database, verifying sequential CREATE, READ, UPDATE, DELETE, and foreign-key integrity rejection:
+The complete CRUD lifecycle verification test was executed against our live Supabase PostgreSQL database via `node scripts/run_crud_verification.js`, verifying database connectivity, sequential CREATE, READ, UPDATE, DELETE, and foreign-key integrity rejection:
 
 ![Automated CRUD Suite Evidence](docs/screenshots/11_terminal_db_verification.png)
+
+<details>
+<summary><b>Click to view split terminal captures (Part 1 & Part 2)</b></summary>
+<br>
+
+| Part 1: Connectivity, CREATE & READ | Part 2: UPDATE, DELETE & Relational Integrity |
+| :---: | :---: |
+| ![Part 1](docs/screenshots/11a_terminal_crud_part1.png) | ![Part 2](docs/screenshots/11b_terminal_crud_part2.png) |
+
+</details>
 
 ---
 
