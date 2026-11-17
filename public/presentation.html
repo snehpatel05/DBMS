@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MC212 DBMS — Team 7 Presentation</title>
+    <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+    <style>
+        :root {
+            --primary: #1F4D3F;
+            --primary-dark: #14342B;
+            --gold: #D4AF37;
+            --surface: #F8FAFC;
+            --text-main: #0F172A;
+            --text-muted: #64748B;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0b1512;
+            color: #0F172A;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+        .slide {
+            display: none;
+            height: 100vh;
+            width: 100vw;
+            box-sizing: border-box;
+            padding: 2.5rem 3.5rem;
+            animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .slide.active {
+            display: flex;
+            flex-direction: column;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.99) translateY(4px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .card {
+            background: white;
+            border: 1px solid #E2E8F0;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        .code-box {
+            background: #111827;
+            color: #E2E8F0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen justify-between">
+
+    <!-- Top Navigation & Progress Bar -->
+    <header class="bg-[#14342B] border-b border-[#2d5f50] px-6 py-3 flex justify-between items-center text-white z-50">
+        <div class="flex items-center gap-3">
+            <span class="text-xs font-bold tracking-wider px-2 py-0.5 rounded bg-[#D4AF37] text-[#14342B]">MC212 DBMS</span>
+            <span class="font-semibold text-sm text-slate-200">District Court Case Management System — Team 7</span>
+        </div>
+        <div class="flex items-center gap-4 text-xs">
+            <span class="text-emerald-300 font-mono" id="slideIndicator">Slide 1 of 12</span>
+            <button onclick="toggleSpeakerNotes()" class="px-2.5 py-1 bg-[#1F4D3F] hover:bg-[#286352] text-slate-200 rounded border border-[#3b7564] transition">
+                Toggle Notes (S)
+            </button>
+            <button onclick="toggleFullscreen()" class="px-2.5 py-1 bg-[#1F4D3F] hover:bg-[#286352] text-slate-200 rounded border border-[#3b7564] transition">
+                Full Screen (F)
+            </button>
+        </div>
+    </header>
+
+    <div class="w-full bg-[#1F4D3F] h-1">
+        <div id="progressBar" class="bg-[#D4AF37] h-1 transition-all duration-300" style="width: 8.33%;"></div>
+    </div>
+
+    <!-- MAIN SLIDE CONTAINER -->
+    <main class="flex-1 relative overflow-y-auto bg-[#F4F6F5]">
+
+        <!-- SLIDE 1: TITLE SLIDE -->
+        <section class="slide active justify-center items-center text-center bg-[#1F4D3F] text-white">
+            <div class="max-w-4xl space-y-6">
+                <span class="inline-block text-[#D4AF37] text-sm uppercase tracking-widest font-bold border border-[#D4AF37]/40 px-3 py-1 rounded-full">
+                    MC212 Database Management Systems • Final Project Viva
+                </span>
+                <h1 class="text-5xl font-extrabold tracking-tight text-white leading-tight">
+                    District Court Case Management System
+                </h1>
+                <p class="text-lg text-emerald-100 max-w-2xl mx-auto">
+                    A Full-Stack Relational Architecture: From Domain Modeling & BCNF to Production Cloud Deployment
+                </p>
+
+                <div class="bg-[#14342B] border border-[#2d5f50] rounded-xl p-6 mt-8 max-w-2xl mx-auto shadow-xl">
+                    <div class="text-xs uppercase font-bold text-[#D4AF37] tracking-wider mb-2">Team Number 7</div>
+                    <div class="grid grid-cols-2 gap-4 text-sm font-semibold mb-4">
+                        <div class="p-2 bg-[#1F4D3F] rounded border border-[#2d5f50]">
+                            Patel Sneh Champakkumar <br><span class="text-emerald-300 text-xs font-mono font-normal">202503007</span>
+                        </div>
+                        <div class="p-2 bg-[#1F4D3F] rounded border border-[#2d5f50]">
+                            Trivedi Havish Ashishkumar <br><span class="text-emerald-300 text-xs font-mono font-normal">202503013</span>
+                        </div>
+                    </div>
+                    <div class="text-xs text-slate-300 flex justify-between border-t border-[#2d5f50] pt-3">
+                        <span>🌐 <b>Live:</b> dbms-iota-three.vercel.app</span>
+                        <span>📦 <b>Repo:</b> github.com/snehpatel05/DBMS</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 2: PROBLEM STATEMENT & SCOPE -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">01. Operational Domain</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Problem Statement & Operational Scope</h2>
+            </div>
+            <div class="grid grid-cols-3 gap-6 flex-1">
+                <div class="card p-6 flex flex-col justify-between">
+                    <div>
+                        <div class="text-lg font-bold text-red-600 mb-3 flex items-center gap-2">
+                            <span>🚨</span> Paper Registry Challenges
+                        </div>
+                        <ul class="space-y-3 text-xs text-slate-700 leading-relaxed">
+                            <li>• <b>Misplaced Case Files:</b> Traditional district court registries risk physical damage or lost plaints.</li>
+                            <li>• <b>Appearance Latency:</b> High operational friction finding next hearing dates, summons status, and interim applications.</li>
+                            <li>• <b>Lack of Auditability:</b> Absence of cryptographic, immutable audit logs for procedural changes.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-red-50 text-red-700 p-2.5 rounded border border-red-200">
+                        <b>Core Bottleneck:</b> Fragmented institutional memory without atomic database enforcement.
+                    </div>
+                </div>
+
+                <div class="card p-6 flex flex-col justify-between">
+                    <div>
+                        <div class="text-lg font-bold text-[#1F4D3F] mb-3 flex items-center gap-2">
+                            <span>🎯</span> System Scope & Boundaries
+                        </div>
+                        <ul class="space-y-3 text-xs text-slate-700 leading-relaxed">
+                            <li>• <b>Single Court Registry:</b> Engineered specifically for a district Sessions Division registry handling heavy daily dockets.</li>
+                            <li>• <b>Autonomous Architecture:</b> Fully self-contained without fragile real-time external network dependencies.</li>
+                            <li>• <b>6-Stage Lifecycle:</b> Filing → Registration → Scrutiny → Cause List → Court Proceedings → Final Disposal.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-emerald-50 text-emerald-800 p-2.5 rounded border border-emerald-200">
+                        <b>In Scope:</b> 100% of internal relational judicial workflows.
+                    </div>
+                </div>
+
+                <div class="card p-6 flex flex-col justify-between">
+                    <div>
+                        <div class="text-lg font-bold text-[#1F4D3F] mb-3 flex items-center gap-2">
+                            <span>👥</span> Role-Based Authorization
+                        </div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>Judge (Bench):</b> Presides trials, enters private notes, signs binding decrees, disposes cases.</li>
+                            <li>• <b>Advocate (Bar):</b> Manages retainer portfolio, files pleadings, signs digital Vakalatnamas.</li>
+                            <li>• <b>Clerk (Registry):</b> High-volume plaint intake, summons issuance, daily cause list generation.</li>
+                            <li>• <b>Litigant (Citizen):</b> Read-only docket tracking, hearing alerts, lawyer appointment consent.</li>
+                            <li>• <b>Administrator:</b> Schema audit, trigger verification, account management.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-slate-100 text-slate-700 p-2.5 rounded border border-slate-200">
+                        <b>Enforcement:</b> Cryptographic tokens & DB-level projection masking.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 3: SYSTEM ARCHITECTURE -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">02. Engineering Stack</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">System Architecture & Technology Stack</h2>
+            </div>
+            <div class="grid grid-cols-4 gap-5 flex-1">
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-[#1F4D3F] mb-1">🗄️ Relational Database</div>
+                    <div class="text-xs font-semibold text-emerald-700 mb-3">PostgreSQL 17.11 (Supabase)</div>
+                    <ul class="space-y-2 text-xs text-slate-600">
+                        <li>• Cloud-hosted on Supabase Tokyo (<code>ap-northeast-1</code>).</li>
+                        <li>• <b>18 Relations</b> in strict BCNF.</li>
+                        <li>• <b>29 Foreign Keys</b> with <code>ON DELETE RESTRICT</code>.</li>
+                        <li>• PL/pgSQL business triggers and live audit ledger.</li>
+                    </ul>
+                </div>
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-blue-800 mb-1">⚙️ Backend REST API</div>
+                    <div class="text-xs font-semibold text-blue-600 mb-3">Node.js + Express.js</div>
+                    <ul class="space-y-2 text-xs text-slate-600">
+                        <li>• <code>pg</code> connection pool with SSL/TLS encryption.</li>
+                        <li>• <b>100% Parameterized queries</b> (<code>$1, $2</code>) across 50+ routes.</li>
+                        <li>• HMAC-SHA256 session token security middleware.</li>
+                        <li>• SQL <code>CASE</code> statements mask bench notes for non-judges.</li>
+                    </ul>
+                </div>
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-emerald-800 mb-1">🖥️ Frontend Application</div>
+                    <div class="text-xs font-semibold text-emerald-600 mb-3">Government Docket UI</div>
+                    <ul class="space-y-2 text-xs text-slate-600">
+                        <li>• Pure HTML5, CSS3, & Modern Vanilla JS (Fetch API).</li>
+                        <li>• Zero bulky frontend dependencies; instant load time.</li>
+                        <li>• Source Sans 3 typography & monospace CNR dockets.</li>
+                        <li>• Role-customized views with top-right switcher.</li>
+                    </ul>
+                </div>
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-amber-800 mb-1">🛡️ Production Deployment</div>
+                    <div class="text-xs font-semibold text-amber-600 mb-3">Vercel Serverless Edge</div>
+                    <ul class="space-y-2 text-xs text-slate-600">
+                        <li>• CI/CD pipeline linked to GitHub repository.</li>
+                        <li>• <code>.env</code> credential isolation prevents secret leakage.</li>
+                        <li>• Automated HTTPS termination and edge routing.</li>
+                        <li>• 100% uptime with live verified accessibility.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="card p-4 mt-4 bg-emerald-50 border-emerald-200 flex items-center justify-between">
+                <span class="text-xs text-emerald-900 font-semibold">
+                    🔒 <b>SQL Injection Prevention:</b> Prepared statements guarantee user input is never concatenated into raw SQL strings.
+                </span>
+                <span class="text-xs bg-emerald-700 text-white font-mono px-2.5 py-1 rounded">100% PARAMETERIZED</span>
+            </div>
+        </section>
+
+        <!-- SLIDE 4: REQUIREMENTS COMPLIANCE -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">03. Requirements Analysis</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Requirements Compliance: SRS vs Implemented System</h2>
+            </div>
+            <div class="grid grid-cols-12 gap-6 flex-1">
+                <div class="col-span-7 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-emerald-700 mb-3 flex items-center justify-between border-b pb-2">
+                            <span>✅ All Five P1 (High Priority) Requirements 100% Satisfied</span>
+                            <span class="text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono">5/5 SATISFIED</span>
+                        </div>
+                        <div class="space-y-2.5 text-xs">
+                            <div class="p-2 bg-slate-50 rounded border">
+                                <b>REQ-01: Consolidated Case Dossier & Timeline</b>
+                                <p class="text-slate-600">Single chronological timeline joining parties, advocates, hearings, and orders for any CNR.</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded border">
+                                <b>REQ-02: Multi-Parameter Search Engine</b>
+                                <p class="text-slate-600">Fast subquery lookups by CNR, Case No, Filing SFN, FIR, Litigant, or Advocate.</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded border">
+                                <b>REQ-03: Mandatory Role-Based Access Control (RBAC)</b>
+                                <p class="text-slate-600">Token-gated endpoints; confidential bench note privacy; clerks barred from disposal.</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded border">
+                                <b>REQ-04: Automated Court Push Alerts</b>
+                                <p class="text-slate-600">In-app alert notifications for hearing changes, published decrees, with Delivered/Read states.</p>
+                            </div>
+                            <div class="p-2 bg-slate-50 rounded border">
+                                <b>REQ-05: Statutory Daily Cause List Management</b>
+                                <p class="text-slate-600">Algorithmic priority ordering by Urgency, Witness Summons, and Filing Age tiebreakers.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-span-5 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-3 border-b pb-2">
+                            ⚖️ P2 / P3 Requirements & Engineering Boundaries
+                        </div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>REQ-08 (Lead / Associate Counsel):</b> Fully Satisfied via trigger <code>fn_check_assigner_is_lead</code>.</li>
+                            <li>• <b>REQ-09 (Disposal Enforcement):</b> Fully Satisfied via trigger <code>fn_check_disposal</code> requiring published Final Judgment.</li>
+                            <li>• <b>Added Functionality:</b> Live trigger-based audit logging and witness summons tracking.</li>
+                        </ul>
+                    </div>
+                    <div class="p-3 bg-amber-50 rounded border border-amber-200 text-xs text-amber-900 mt-4">
+                        <b>Deliberate Non-Database Gaps (Group 1):</b><br>
+                        Binary file blob storage, external SMS/email gateways, and payment gateways were left out by design to focus strictly on the relational database core.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 5: FINAL ERD (VERSION 3) -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">04. Conceptual Modeling</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Conceptual Design — Final Entity-Relationship Diagram (v3)</h2>
+            </div>
+            <div class="bg-[#1F4D3F] text-white p-3 rounded-lg mb-4 text-xs flex justify-around font-semibold">
+                <span>15 Entity Sets</span>
+                <span>•</span>
+                <span>20 Relationships</span>
+                <span>•</span>
+                <span>5 ISA Subtypes</span>
+                <span>•</span>
+                <span>3 Weak Entities</span>
+                <span>•</span>
+                <span>2 Associative Entities</span>
+            </div>
+            <div class="grid grid-cols-3 gap-6 flex-1">
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-[#1F4D3F] mb-2">🔺 ISA Specialization Hierarchy</div>
+                    <p class="text-xs text-slate-600 mb-3">Total and disjoint hierarchy rooted at supertype <code>SYSTEM_USER</code>:</p>
+                    <ul class="space-y-2 text-xs text-slate-700">
+                        <li>• <b>Supertype:</b> <code>SYSTEM_USER(User_ID, Name, Email, Password_Hash, User_Role)</code></li>
+                        <li>• <b>Subtypes:</b> JUDGE, CLERK, LITIGANT, ADVOCATE (<code>Bar_Enrollment_No</code>), COURT_ADMINISTRATOR (<code>Localization_Setting</code>).</li>
+                        <li>• <b>1:1 Foreign Keys:</b> Subtypes share identical primary key with supertype.</li>
+                    </ul>
+                </div>
+
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-[#1F4D3F] mb-2">📦 Weak Entities of CASE</div>
+                    <p class="text-xs text-slate-600 mb-3">Identified by parent case CNR plus a sequence number:</p>
+                    <ul class="space-y-2 text-xs text-slate-700">
+                        <li>• <b>HEARING:</b> Partial key <code>Hearing_Seq_No</code>. Captures bench notes & hearing outcomes.</li>
+                        <li>• <b>ORDER:</b> Partial key <code>Order_Seq_No</code>. Captures judicial decrees & published dates.</li>
+                        <li>• <b>DOCUMENT:</b> Partial key <code>Doc_Seq_No</code>. Captures legal filings uploaded by retained counsel.</li>
+                    </ul>
+                </div>
+
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-[#1F4D3F] mb-2">💡 Key Design Decisions</div>
+                    <ul class="space-y-2.5 text-xs text-slate-700">
+                        <li>• <b>Party_Role on FILES:</b> Models that a citizen can be a Petitioner in one case and a Respondent in another.</li>
+                        <li>• <b>Associative VAKALATNAMA:</b> Has its own key <code>Auth_ID</code>, signed date, and digital e-signature flag.</li>
+                        <li>• <b>Recursive Seniority:</b> <code>CASE_ADVOCATE</code> contains recursive <code>ASSIGNED BY</code> link to enforce lead partner authority.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 6: RELATIONAL SCHEMA & INTEGRITY -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">05. Logical Design</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Logical Relational Schema & Referential Integrity</h2>
+            </div>
+            <div class="grid grid-cols-12 gap-6 flex-1">
+                <div class="col-span-6 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-3 border-b pb-2">
+                            📋 18 Normalized Relations (R1 to R18)
+                        </div>
+                        <div class="space-y-2 text-xs text-slate-700">
+                            <div><b>User ISA Subtypes:</b> R1 SYSTEM_USER, R2 ADVOCATE, R3 LITIGANT, R4 JUDGE, R5 CLERK, R6 COURT_ADMINISTRATOR</div>
+                            <div><b>Case Registry & Parties:</b> R7 CASE (CNR PK), R8 CASE_PARTY (CNR, Litigant_ID), R9 CASE_ADVOCATE (CNR, Advocate_ID)</div>
+                            <div><b>Scheduling & Summons:</b> R10 CAUSE_LIST, R11 HEARING, R12 WITNESS, R13 SUMMONS</div>
+                            <div><b>Decrees & Pleadings:</b> R14 ORDER, R15 DOCUMENT, R16 VAKALATNAMA</div>
+                            <div><b>Alert Notifications:</b> R17 ALERT, R18 ALERT_RECIPIENT</div>
+                        </div>
+                    </div>
+                    <div class="text-xs bg-slate-50 p-2.5 rounded border text-slate-600">
+                        <b>Domain Integrity:</b> <code>CHECK</code> constraints strictly enforce valid statuses, urgency grades, and user roles.
+                    </div>
+                </div>
+
+                <div class="col-span-6 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-red-700 mb-3 border-b pb-2">
+                            🔒 29 Foreign Keys: Why ON DELETE RESTRICT?
+                        </div>
+                        <div class="space-y-3 text-xs text-slate-700">
+                            <div class="p-2.5 bg-red-50 rounded border border-red-200">
+                                <b>Statutory Judicial Non-Repudiation:</b><br>
+                                In legal administration, court dockets, evidence, and orders must <b>never</b> be silently erased via cascade. Deleting a parent case with child proceedings is physically rejected by the DB engine (PostgreSQL Error 23503).
+                            </div>
+                            <ul class="space-y-1.5 pl-2">
+                                <li>• <b>ON UPDATE CASCADE:</b> Guarantees key updates (e.g., CNR or User_ID) propagate seamlessly to all child tables.</li>
+                                <li>• <b>Recursive Integrity:</b> <code>CASE_ADVOCATE.(CNR, Assigned_By)</code> references <code>CASE_ADVOCATE.(CNR, Advocate_ID)</code>.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="text-xs bg-emerald-50 text-emerald-800 p-2.5 rounded border border-emerald-200">
+                        <b>Result:</b> Absolute zero orphan records or unverified deletions across the entire database.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 7: BCNF NORMALIZATION PROOF -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">06. Normalization Proof</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Rigorous Step-by-Step Normalization to BCNF</h2>
+            </div>
+            <div class="grid grid-cols-3 gap-6 flex-1">
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-[#1F4D3F] mb-2">1️⃣ 1NF & 2NF Verification</div>
+                    <ul class="space-y-3 text-xs text-slate-700">
+                        <li>• <b>1NF:</b> All column domains are atomic. Zero multi-valued or repeating attributes. Primary key established on every table.</li>
+                        <li>• <b>2NF:</b> Evaluated all 7 composite-key relations (R8, R9, R11, R13, R14, R15, R18).</li>
+                        <li>• <b>No Partial Dependencies:</b> Every non-prime attribute depends on the <i>entire</i> candidate key, never a proper subset.</li>
+                    </ul>
+                </div>
+
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-amber-700 mb-2">2️⃣ 3NF Redundancy Resolution</div>
+                    <p class="text-xs text-slate-600 mb-2 font-semibold">Two Transitive Violations Discovered & Fixed:</p>
+                    <div class="space-y-3 text-xs text-slate-700">
+                        <div class="p-2 bg-slate-50 rounded border">
+                            <b>R11 HEARING:</b> <code>(CNR, Seq) → CauseList_ID → Hearing_Date</code>.<br>
+                            <span class="text-red-600">Anomaly:</span> Clerk could insert a conflicting date.<br>
+                            <span class="text-emerald-700">Fix:</span> Dropped <code>Hearing_Date</code>; read from <code>CAUSE_LIST.List_Date</code>.
+                        </div>
+                        <div class="p-2 bg-slate-50 rounded border">
+                            <b>R14 ORDER:</b> <code>(CNR, Seq) → Published_Date → Publish_Status</code>.<br>
+                            <span class="text-emerald-700">Fix:</span> Dropped derivable status; evaluated dynamically via <code>Published_Date IS NOT NULL</code>.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card p-5">
+                    <div class="text-sm font-bold text-emerald-700 mb-2">3️⃣ Strict BCNF Compliance</div>
+                    <ul class="space-y-3 text-xs text-slate-700">
+                        <li>• <b>Determinant Rule:</b> In every non-trivial functional dependency \(X \to Y\), \(X\) is a superkey.</li>
+                        <li>• <b>No Overlapping Keys:</b> Tested all relations with multiple candidate keys (R1, R2, R7, R10, R16).</li>
+                        <li>• <b>Lossless Decomposition:</b> All table joins use key attributes.</li>
+                        <li>• <b>Dependency Preservation:</b> 100% of functional dependencies preserved.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 8: TRIGGERS & BUSINESS RULES -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">07. Database Hardening</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">PL/pgSQL Triggers & Judicial Integrity Enforcement</h2>
+            </div>
+            <div class="grid grid-cols-2 gap-6 flex-1">
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1 flex items-center gap-2">
+                            <span>🔒</span> Irreversible Case Disposal (<code>fn_check_disposal</code>)
+                        </div>
+                        <p class="text-xs text-slate-600 mb-3">Enforces the legal lifecycle transition from Pending to Disposed:</p>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>Final Judgment Guard:</b> Rejects setting status to 'Disposed' unless an official published Final Judgment order exists in R14.</li>
+                            <li>• <b>Permanent Seal:</b> Once marked Disposed, the case is sealed against any further edits or deletion.</li>
+                        </ul>
+                    </div>
+                    <div class="code-box text-xs">
+IF NEW.case_status = 'Disposed' THEN
+  SELECT COUNT(*) INTO v_order_count FROM court_order 
+  WHERE cnr = NEW.cnr AND order_type = 'Final Judgment' AND published_date IS NOT NULL;
+  IF v_order_count = 0 THEN
+    RAISE EXCEPTION 'Disposal requires published Final Judgment.';
+  END IF;
+END IF;
+                    </div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1 flex items-center gap-2">
+                            <span>⚖️</span> Lead Counsel Hierarchy (<code>fn_check_assigner_is_lead</code>)
+                        </div>
+                        <p class="text-xs text-slate-600 mb-3">Protects attorney representation protocol:</p>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• Enforces that only an attorney registered as 'Lead' on that case can assign junior associate counsel.</li>
+                            <li>• Blocks unauthorized advocate impersonation at the SQL trigger layer.</li>
+                        </ul>
+                    </div>
+                    <div class="code-box text-xs">
+SELECT case_role INTO v_assigner_role FROM case_advocate
+WHERE cnr = NEW.cnr AND advocate_id = NEW.assigned_by;
+IF v_assigner_role != 'Lead' THEN
+  RAISE EXCEPTION 'Only Lead Counsel can assign associate advocates.';
+END IF;
+                    </div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-blue-900 mb-1 flex items-center gap-2">
+                            <span>👁️</span> Bench Note Confidentiality (SQL Projections)
+                        </div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• Judicial bench notes (R11) contain private trial impressions.</li>
+                            <li>• <b>Zero Leakage:</b> Masked via SQL <code>CASE WHEN role = 'Judge' AND judge_id = req.user.id THEN bench_note ELSE NULL END</code>.</li>
+                            <li>• Non-judges receive <code>NULL</code> directly from the database engine.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-emerald-800 mb-1 flex items-center gap-2">
+                            <span>📝</span> Live Trigger Audit Trail (<code>fn_audit</code>)
+                        </div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• Automatically logs every <code>INSERT</code>, <code>UPDATE</code>, and <code>DELETE</code>.</li>
+                            <li>• Records table name, operation type, record key, and timestamp into <code>audit_log</code>.</li>
+                            <li>• Fully accessible to Court Administrators on the live dashboard.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 9: STATUTORY CAUSE LIST ALGORITHM -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">08. Algorithmic Scheduling</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Statutory Cause List Generation Algorithm (REQ-05)</h2>
+            </div>
+            <div class="grid grid-cols-12 gap-6 flex-1">
+                <div class="col-span-6 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-3 border-b pb-2">
+                            📜 Multi-Criteria Deterministic Priority Rules
+                        </div>
+                        <div class="space-y-3.5 text-xs text-slate-700">
+                            <div class="p-2.5 bg-slate-50 rounded border">
+                                <b>1. Statutory Urgency Tier (Primary Filter)</b>
+                                <p class="text-slate-600"><code>Statutory Urgency</code> matters are scheduled first, followed by <code>Urgent</code>, then <code>Normal</code> plaints.</p>
+                            </div>
+                            <div class="p-2.5 bg-slate-50 rounded border">
+                                <b>2. Witness Summons Attendance (Secondary Filter)</b>
+                                <p class="text-slate-600">Cases with summoned witnesses physically appearing in court take priority to prevent witness travel wastage.</p>
+                            </div>
+                            <div class="p-2.5 bg-slate-50 rounded border">
+                                <b>3. Case Filing Age Tiebreaker</b>
+                                <p class="text-slate-600">Earliest filing dates break ties within the same priority tier. Guarantees older matters are never starved by new filings.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-xs bg-emerald-50 text-emerald-800 p-2 rounded border border-emerald-200">
+                        <b>Judicial Load Balancing:</b> Rotational round-robin assignment distributes dockets equally among sitting judges.
+                    </div>
+                </div>
+
+                <div class="col-span-6 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-2 border-b pb-2">
+                            ⚡ Single Transactional SQL Implementation
+                        </div>
+                        <div class="code-box text-xs">
+SELECT c.cnr, c.case_number, c.statutory_urgency, c.filing_date,
+       COUNT(s.summons_date) AS witness_count
+FROM court_case c
+LEFT JOIN hearing h ON h.cnr = c.cnr
+LEFT JOIN summons s ON s.cnr = h.cnr AND s.hearing_seq_no = h.hearing_seq_no
+WHERE c.case_status = 'Pending'
+GROUP BY c.cnr
+ORDER BY 
+  CASE c.statutory_urgency
+    WHEN 'Statutory Urgency' THEN 1
+    WHEN 'Urgent' THEN 2
+    ELSE 3
+  END ASC,
+  COALESCE(COUNT(s.summons_date), 0) DESC,
+  c.filing_date ASC
+LIMIT 25;
+                        </div>
+                    </div>
+                    <div class="text-xs text-slate-600">
+                        Executed inside an atomic transaction: creates the cause list header (R10) and links hearings (R11) instantaneously.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 10: ROLE-TAILORED WORKSPACES -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">09. Live Application</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Role-Tailored Workspaces & Live UI Highlights</h2>
+            </div>
+            <div class="grid grid-cols-4 gap-5 flex-1">
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1">👨‍💼 Clerk Desk</div>
+                        <div class="text-xs text-slate-500 mb-3">Vivaan Dave (#301)</div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>Plaint Intake Modal:</b> Strict regex validation for 16-char CNR (<code>GJAH...</code>) and standardized filing number.</li>
+                            <li>• <b>Cause List Generator:</b> 1-click execution of the priority scheduling algorithm.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-slate-100 p-2 rounded text-center font-mono">Status: Filed / Pending</div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1">⚖️ Judicial Bench</div>
+                        <div class="text-xs text-slate-500 mb-3">Hon. Vivaan Modi (#201)</div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>Presiding Trials:</b> View daily bench roster and recorded trial histories.</li>
+                            <li>• <b>Confidential Bench Notes:</b> Private observations isolated to judge.</li>
+                            <li>• <b>Two-Step Orders:</b> Draft reserved → deliberate publication.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-emerald-50 text-emerald-800 p-2 rounded text-center font-mono">Disposal Authority</div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1">💼 Advocate Bar</div>
+                        <div class="text-xs text-slate-500 mb-3">Aditya Patel (#2)</div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>Retainer Portfolio:</b> Exclusively views retained client plaints.</li>
+                            <li>• <b>Pleading Filing:</b> Uploads affidavits and evidence exhibits.</li>
+                            <li>• <b>Vakalatnama Authorizations:</b> Live <code>e-Signed Valid</code> badge.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-blue-50 text-blue-800 p-2 rounded text-center font-mono">Client Privilege</div>
+                </div>
+
+                <div class="card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-1">🛡️ Court Admin</div>
+                        <div class="text-xs text-slate-500 mb-3">Vivaan Patel (#401)</div>
+                        <ul class="space-y-2 text-xs text-slate-700">
+                            <li>• <b>18 BCNF Table Monitor:</b> Live tuple counts across all tables.</li>
+                            <li>• <b>Trigger Audit Trail:</b> Real-time log of all INSERT, UPDATE, DELETE actions.</li>
+                            <li>• <b>User Accounts:</b> 500 ISA disjoint account management.</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-amber-50 text-amber-800 p-2 rounded text-center font-mono">Full Supervision</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 11: VERIFICATION & LAB 11 EVIDENCE -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">10. Lab 11 Verification</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Automated Database Connectivity & CRUD Verification</h2>
+            </div>
+            <div class="grid grid-cols-12 gap-6 flex-1">
+                <div class="col-span-7 card p-5 bg-[#14342B] text-slate-100 flex flex-col justify-between">
+                    <div>
+                        <div class="text-xs font-mono text-[#D4AF37] mb-2 font-bold flex justify-between">
+                            <span>WINDOWS POWERSHELL VERIFICATION EVIDENCE</span>
+                            <span>ALL TESTS PASSED</span>
+                        </div>
+                        <div class="code-box bg-black/60 text-emerald-300 text-[11px] leading-tight space-y-1">
+                            <div>PS&gt; node scripts/run_crud_verification.js</div>
+                            <div class="text-slate-400">--- (A) SECTION A: DATABASE CONNECTIVITY TEST ---</div>
+                            <div>[CONNECTIVITY SUCCESS] PostgreSQL 17.11 on Supabase Cloud</div>
+                            <div>Host: aws-0-ap-northeast-1.pooler.supabase.com:6543</div>
+                            <div class="text-slate-400">--- (B.1) CRUD: CREATE (INSERT) OPERATION ---</div>
+                            <div>[INSERT RESULT] Rows affected (result.rowCount) = 1</div>
+                            <div class="text-slate-400">--- (B.2) CRUD: READ (SELECT) OPERATION ---</div>
+                            <div>[SELECT RESULT] Rows fetched (result.rowCount) = 1</div>
+                            <div class="text-slate-400">--- (B.3) CRUD: UPDATE OPERATION ---</div>
+                            <div>[UPDATE RESULT] Rows affected (result.rowCount) = 1</div>
+                            <div class="text-slate-400">--- (B.4) CRUD: DELETE OPERATION ---</div>
+                            <div>[DELETE RESULT] Rows affected (result.rowCount) = 1</div>
+                            <div class="text-slate-400">--- RELATIONAL INTEGRITY TEST: FOREIGN KEY RESTRICT ---</div>
+                            <div class="text-yellow-300">[FK RESTRICT VERIFIED] Error code 23503: Deletion blocked.</div>
+                            <div class="text-[#D4AF37] font-bold pt-1">ALL TESTS PASSED! Database connectivity & CRUD 100% verified.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-span-5 card p-5 flex flex-col justify-between">
+                    <div>
+                        <div class="text-sm font-bold text-[#1F4D3F] mb-3 border-b pb-2">
+                            🔍 What This Proves to Evaluators
+                        </div>
+                        <ul class="space-y-3 text-xs text-slate-700">
+                            <li>• <b>End-to-End TLS Cloud Handshake:</b> Standalone script connects securely to Tokyo database without web server proxy.</li>
+                            <li>• <b>Atomic CRUD Verification:</b> Verified sequential row insertion, retrieval, update, and deletion (<code>rowCount = 1</code>).</li>
+                            <li>• <b>Foreign Key RESTRICT Safety:</b> Attempted deletion of parent case with child party records is physically blocked by database engine (PostgreSQL error 23503).</li>
+                        </ul>
+                    </div>
+                    <div class="text-xs bg-emerald-50 text-emerald-800 p-2.5 rounded border border-emerald-200">
+                        <b>Lab 11 Criteria:</b> 100% compliant with Sections A, B, and C.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SLIDE 12: ANTICIPATED TA VIVA QUESTIONS -->
+        <section class="slide">
+            <div class="mb-4">
+                <span class="text-xs font-bold text-[#D4AF37] uppercase tracking-wider">11. Viva Voce Preparation</span>
+                <h2 class="text-2xl font-bold text-[#1F4D3F]">Anticipated TA Viva Questions & Defenses</h2>
+            </div>
+            <div class="grid grid-cols-2 gap-5 flex-1">
+                <div class="card p-4 flex flex-col justify-between border-l-4 border-l-[#1F4D3F]">
+                    <div>
+                        <div class="text-xs font-bold text-[#1F4D3F] mb-1">Q1: "Why did you normalize to BCNF instead of stopping at 3NF?"</div>
+                        <p class="text-xs text-slate-700 leading-relaxed">
+                            <b>Defense:</b> In 3NF, transitive dependencies in <code>HEARING</code> (hearing date depending on cause list) and <code>ORDER</code> (publish status depending on publish date) allowed update anomalies. Decomposing them to BCNF eliminates all redundancy losslessly while preserving every dependency.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card p-4 flex flex-col justify-between border-l-4 border-l-red-600">
+                    <div>
+                        <div class="text-xs font-bold text-red-700 mb-1">Q2: "Why use ON DELETE RESTRICT instead of ON DELETE CASCADE?"</div>
+                        <p class="text-xs text-slate-700 leading-relaxed">
+                            <b>Defense:</b> Legal records demand statutory non-repudiation. In a real judiciary, deleting a case must never silently wipe active hearings, decrees, or summons. <code>RESTRICT</code> guarantees no legal document vanishes accidentally.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card p-4 flex flex-col justify-between border-l-4 border-l-blue-600">
+                    <div>
+                        <div class="text-xs font-bold text-blue-800 mb-1">Q3: "How do you guarantee bench note privacy if someone calls the API directly?"</div>
+                        <p class="text-xs text-slate-700 leading-relaxed">
+                            <b>Defense:</b> Bench note confidentiality is enforced directly in the SQL projection query via <code>CASE WHEN role = 'Judge' AND judge_id = req.user.id THEN bench_note ELSE NULL END</code>. Non-judges receive <code>NULL</code> from the database engine itself.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="card p-4 flex flex-col justify-between border-l-4 border-l-amber-600">
+                    <div>
+                        <div class="text-xs font-bold text-amber-800 mb-1">Q4: "How does the cause list algorithm prevent starvation of older cases?"</div>
+                        <p class="text-xs text-slate-700 leading-relaxed">
+                            <b>Defense:</b> After prioritizing statutory urgency and witness attendance, the algorithm uses <code>filing_date ASC</code> as the deterministic tiebreaker, guaranteeing long-pending plaints are scheduled before newer filings.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER CONTROLS & SPEAKER NOTES DRAWER -->
+    <footer class="bg-[#14342B] border-t border-[#2d5f50] px-6 py-3 flex justify-between items-center text-white">
+        <div class="flex items-center gap-2">
+            <button onclick="prevSlide()" class="px-3 py-1 bg-[#1F4D3F] hover:bg-[#286352] text-white text-xs font-semibold rounded border border-[#3b7564] transition">
+                ← Previous
+            </button>
+            <button onclick="nextSlide()" class="px-4 py-1 bg-[#D4AF37] hover:bg-[#e6be44] text-[#14342B] text-xs font-bold rounded transition">
+                Next →
+            </button>
+            <span class="text-xs text-slate-400 ml-3">Navigate with Left / Right Arrow keys</span>
+        </div>
+        <div class="text-xs text-slate-300">
+            District Court Case Management System • MC212 DBMS Team 7
+        </div>
+    </footer>
+
+    <!-- SPEAKER NOTES MODAL / DRAWER -->
+    <div id="notesDrawer" class="hidden fixed bottom-14 right-6 w-96 bg-white border border-slate-300 rounded-xl shadow-2xl p-5 z-50 text-xs">
+        <div class="flex justify-between items-center mb-2 border-b pb-2">
+            <span class="font-bold text-[#1F4D3F] uppercase tracking-wider text-[11px]">Speaker Notes & Defense Cue</span>
+            <button onclick="toggleSpeakerNotes()" class="text-slate-400 hover:text-slate-700 font-bold">&times;</button>
+        </div>
+        <div id="notesContent" class="text-slate-700 leading-relaxed max-h-60 overflow-y-auto">
+            Welcome the panel and state the project title. Highlight that this is an end-to-end relational database implementation built for an Indian district sessions court.
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        const speakerNotes = [
+            "SLIDE 1: Introduce team members (Sneh & Havish). State that this project models an Indian District Court Sessions Registry, backed by PostgreSQL 17 on Supabase and fully live on Vercel.",
+            "SLIDE 2: Highlight the problem: paper records, missing files, and uncoordinated actors. Emphasize that the scope is a single court registry without external eCourts dependencies.",
+            "SLIDE 3: Explain the 3-tier architecture. Emphasize 100% parameterized queries ($1, $2) completely preventing SQL injection, and HMAC-SHA256 tokens for RBAC.",
+            "SLIDE 4: Walk through the 5 P1 requirements. Emphasize that all 5 P1 items were 100% satisfied. Explain that binary file blobs and SMS gateways were deliberately omitted to focus purely on the relational DBMS core.",
+            "SLIDE 5: Explain the ERD: 15 entities, 20 relationships. Detail the ISA hierarchy under SYSTEM_USER, weak entities (HEARING, ORDER, DOCUMENT) keyed by CNR, and associative entities like VAKALATNAMA.",
+            "SLIDE 6: Explain the 18 relations and 29 foreign keys. Emphasize why ON DELETE RESTRICT is legally mandatory (preventing accidental loss of judicial decrees).",
+            "SLIDE 7: The Normalization slide: Explain the 2 violations found in 3NF (Hearing_Date in R11 and Publish_Status in R14) and how removing them achieved strict BCNF without losing any dependency.",
+            "SLIDE 8: Explain the PL/pgSQL triggers: fn_check_disposal preventing disposal without Final Judgment, fn_check_assigner_is_lead, bench note privacy via SQL CASE, and live audit logging.",
+            "SLIDE 9: Explain the cause list algorithm: Priority 1 = Statutory Urgency, Priority 2 = Witness Summons presence, Priority 3 = Filing Age tiebreaker. Show the single transactional query.",
+            "SLIDE 10: Walk through the 4 workspaces: Clerk (intake & cause lists), Judge (confidential notes & two-step orders), Advocate (retainers & e-Signed Vakalatnama), Admin (BCNF audit & triggers).",
+            "SLIDE 11: Present the Lab 11 verification results: node scripts/run_crud_verification.js in Windows PowerShell showing rowCount = 1 and Error 23503 FK restrict verification.",
+            "SLIDE 12: Viva defenses: Address the classic TA questions: BCNF vs 3NF, ON DELETE RESTRICT, SQL Injection immunity, and judicial privacy."
+        ];
+
+        function showSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (index + totalSlides) % totalSlides;
+            slides[currentSlide].classList.add('active');
+
+            // Update indicator & progress
+            document.getElementById('slideIndicator').innerText = `Slide ${currentSlide + 1} of ${totalSlides}`;
+            document.getElementById('progressBar').style.width = `${((currentSlide + 1) / totalSlides) * 100}%`;
+            document.getElementById('notesContent').innerText = speakerNotes[currentSlide];
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
+
+        function toggleSpeakerNotes() {
+            const drawer = document.getElementById('notesDrawer');
+            drawer.classList.toggle('hidden');
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => alert(err.message));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') nextSlide();
+            else if (e.key === 'ArrowLeft' || e.key === 'PageUp') prevSlide();
+            else if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+            else if (e.key === 's' || e.key === 'S') toggleSpeakerNotes();
+        });
+    </script>
+</body>
+</html>

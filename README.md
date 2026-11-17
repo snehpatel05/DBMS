@@ -14,6 +14,8 @@
 | **🚀 Live Working Application** | **[https://dbms-iota-three.vercel.app/](https://dbms-iota-three.vercel.app/)** | ![Production Active](https://img.shields.io/badge/Vercel-Live%20Deployment-10B981?style=flat&logo=vercel) |
 | **📦 GitHub Source Repository** | **[https://github.com/snehpatel05/DBMS](https://github.com/snehpatel05/DBMS)** | ![GitHub Repo](https://img.shields.io/badge/GitHub-snehpatel05%2FDBMS-181717?style=flat&logo=github) |
 | **📄 Final Project Report (PDF)** | **[Team7_Final_Project_Report.pdf](Team7_Final_Project_Report.pdf)** | ![PDF Report](https://img.shields.io/badge/Report-29%20Pages%20Final%20PDF-red?style=flat&logo=adobeacrobatreader) |
+| **📊 Project Viva Presentation (PPTX)** | **[Team7_DBMS_Presentation.pptx](Team7_DBMS_Presentation.pptx)** | ![PPTX Deck](https://img.shields.io/badge/Presentation-12%20Slides%20PPTX-orange?style=flat&logo=microsoftpowerpoint) |
+| **🖥️ Interactive Slide Deck (Web)** | **[https://dbms-iota-three.vercel.app/presentation.html](https://dbms-iota-three.vercel.app/presentation.html)** | ![Interactive Deck](https://img.shields.io/badge/Deck-Interactive%20HTML-blue?style=flat&logo=html5) |
 | **🗄️ PostgreSQL Cloud Instance** | `aws-0-ap-northeast-1.pooler.supabase.com:6543` | ![PostgreSQL 17](https://img.shields.io/badge/PostgreSQL-17.11%20(Supabase)-4169E1?style=flat&logo=postgresql) |
 
 
